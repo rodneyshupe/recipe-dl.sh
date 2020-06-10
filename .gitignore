@@ -1,6 +1,11 @@
-*.md        # Exclude all Markdown files
-*.rst       # Exclude all reStructuredText files
-*.json      # Exclude JSON files
-*.cookies   # Exclude Cookie data
-!README.md  # Except for README.md
-!README.rst # Except for README.md
+# Exclude all Markdown,  reStructuredText and JSON files.
+*.md
+*.rst
+*.json
+
+# Exclude Cookie data
+*.cookies
+
+# Except for README files
+!README.md
+!README.rst
