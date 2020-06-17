@@ -30,9 +30,16 @@ Currently this has been tested for the following sites:
 * [CookingChannelTV.com](www.cookingchanneltv.com)
 
 ## Install
-Copy recipe-dl.sh to somewhere on your path.
+Copy recipe-dl.sh to /opt.
 ```sh
-curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl/master/recipe-dl.sh --output recipe-dl.sh && chmod + x recipe-dl.sh
+curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl/master/recipe-dl.sh --output /opt/recipe-dl.sh && chmod + x /opt/recipe-dl.sh
+curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl/master/rst2recipe.sh --output /opt/recipe-dl.sh && chmod + x /opt/rst2recipe.sh
+```
+
+Create symbolic links to somewhere on the path.
+```sh
+ln -s /opt/rst2recipe.sh /usr/local/bin/rst2recipe
+ln -s /opt/rst2recipe.sh /usr/local/bin/rst2recipe
 ```
 
 ### Requirements
