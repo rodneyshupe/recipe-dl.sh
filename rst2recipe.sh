@@ -93,7 +93,9 @@ function echo_info() {
 }
 
 function echo_debug() {
-  [[ $FLAG_DEBUG -eq 1 ]] && echo_info "DEBUG: $@"
+  if [[ $FLAG_DEBUG -eq 1 ]]; then
+    echo_info "${SCRIPT_NAME} DEBUG: $@"
+  fi
 }
 
 function echo_error() {
@@ -142,9 +144,9 @@ function rst2json() {
     fi
   }
 
-  echo_debug "Input Param [$1]"
   INPUT_FILE="${1:-/dev/stdin}"
   echo_debug "Input file [${INPUT_FILE}]"
+
   # Create new file handle 5
   exec 5< "${INPUT_FILE}" # Now you can use "<&5" to read from this file
 
@@ -350,7 +352,7 @@ function rst2json() {
   # Close file handle 5
   exec 5<&-
   close_section
-echo_info "END Processing"
+
   close_recipe
   echo "]" >> "${TMP_RECIPE_JSON_FILE}"
   unset IFS
@@ -364,5 +366,5 @@ echo_info "END Processing"
 }
 
 parse_arguments $@
-echo_error "Processing ${ARG_IN_FiLE}"
+echo_debug "Processing ${ARG_IN_FiLE}"
 rst2json "$ARG_IN_FiLE"

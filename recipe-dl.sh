@@ -65,7 +65,7 @@ function usage {
     echo "  -j|--output-json       Output results in JSON format"
     echo "  -m|--output-md         Output results in Markdown format"
     echo "  -r|--output-rst        Output results in reSTructuredText format"
-    #echo "  -i|--infile infile     Specify input json file infile"
+    echo "  -i|--infile infile     Specify input json file infile"
     echo "  -o|--outfile outfile   Specify output file outfile"
     echo "  -s|--save-to-file      Save output file(s)"
   fi
@@ -151,7 +151,9 @@ function echo_info() {
 }
 
 function echo_debug() {
-  [[ $FLAG_DEBUG -eq 1 ]] && echo_info "DEBUG: $@"
+  if [[ $FLAG_DEBUG -eq 1 ]]; then
+    echo_info "${SCRIPT_NAME} DEBUG: $@"
+  fi
 }
 
 function echo_error() {
@@ -934,14 +936,10 @@ function main() {
           ci2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
         #cooking.nytimes.com|www.bonappetit.com)
-          #nyt2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
-        #  generic2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
-        #  ;;
         #www.foodnetwork.com|www.cookingchanneltv.com)
-        #  generic2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
-        #  ;;
         * )
           generic2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
+          #TODO: Add check for ld+json input.
           #echo_error "   ERROR: Unrecogniced domain [${DOMAIN}]"
           #exit ${EX_SOFTWARE}
       esac
@@ -949,6 +947,7 @@ function main() {
       recipe_output "${TEMP_RECIPE_JSON_FILE}"
     done
   else
+    echo_info "Processsing ${ARG_IN_FiLE}..."
     recipe_output "${ARG_IN_FiLE}"
   fi
 
