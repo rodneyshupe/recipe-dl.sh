@@ -11,9 +11,7 @@ set -u
 #   ./recipe-dl.sh https://cooking.nytimes.com/recipes/1019530-cajun-shrimp-boil
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
 
-# TODO: Sites to add:
-# * https://www.finecooking.com - Example: https://www.finecooking.com/recipe/herbed-grill-roasted-lamb
-# * https://www.foodandwine.com - Example: https://www.foodandwine.com/recipes/grilled-leg-lamb-garlic-and-rosemary
+# TODO: Site to add:
 # * https://www.epicurious.com  - Example: https://www.epicurious.com/recipes/food/views/grilled-marinated-leg-of-lamb-234655
 
 # Set temp files
@@ -540,7 +538,8 @@ function generic2json() {
     echo "  \"title\": \"${TITLE}\"," >> "${TMP_RECIPE_JSON_FILE}"
     unset TITLE
 
-    echo "  \"description\": \"$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .description | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\n' )\"," >> "${TMP_RECIPE_JSON_FILE}"
+    DESCRIPTION="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .description | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr '\r' ' ' | tr '\n' ' ' | sed 's/\ \ //g' )"
+    echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     local YIELD=$(echo $(cat ${TMP_SOURCE_JSON_FILE} | jq --compact-output '.recipeYield | max' 2>/dev/null || cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.recipeYield' 2>/dev/null ) | tr -d '\n'  | sed 's/\"//g')
     if [[ -z ${YIELD} ]] || [[ $YIELD == null ]]; then
@@ -598,7 +597,7 @@ function generic2json() {
     local i_count=0
     for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeIngredient[]); do
       ((i_count++))
-      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ')\"" >> "${TMP_RECIPE_JSON_FILE}"
     done
     unset ingredient
     unset i_count
@@ -609,17 +608,33 @@ function generic2json() {
     # Directions
     echo "  \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
     IFS=$'\n'
-    local direction_count=0
-    for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[].text); do
-      ((direction_count++))
-      echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
-    done
+    cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[] > /dev/null 2>&1
+    ret_code=$?
+    if [ ${ret_code} -eq 0 ]; then
+      local direction_count=0
+      cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[].text > /dev/null 2>&1
+      ret_code=$?
+      if [ ${ret_code} -eq 0 ]; then
+        for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[].text); do
+          ((direction_count++))
+          echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        done
+      else
+        for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[]); do
+          ((direction_count++))
+          echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        done
+      fi
+    else
+      direction_count=1
+      echo "    \"1. $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+    fi
     echo "  ]" >> "${TMP_RECIPE_JSON_FILE}"
     echo "}" >> "${TMP_RECIPE_JSON_FILE}"
     unset direction
     unset direction_count
     unset IFS
-    cat "${TMP_RECIPE_JSON_FILE}" | jq --raw-output
+    cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
   else
     echo_error "ERROR: URL (${_URL}) not supported."
   fi
