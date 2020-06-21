@@ -514,11 +514,21 @@ function generic2json() {
 
   if grep --silent "<script[^>]*type=.application\/ld+json.[^>]*>" "${TMP_SOURCE_HTML_FILE}"; then
     cat ${TMP_SOURCE_HTML_FILE} \
-      | tr -d '\n' \
-      | sed 's/.*<script[^>]*type=.application\/ld+json.[^>]*>//g' \
-      | sed 's/<\/script>.*//g' \
+      | hxnormalize -x \
+      | hxselect -i -c "script.yoast-schema-graph" \
       | sed 's/^[^\{]*//' \
       > ${TMP_SOURCE_JSON_RAW_FILE}
+
+    recipetest="$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq -c 'paths | select(.[-1] == "recipeIngredient")')"
+
+    if [[ -z "${recipetest}" ]] || [[ ${recipetest} == null ]]; then
+      cat ${TMP_SOURCE_HTML_FILE} \
+        | tr -d '\n' \
+        | sed 's/.*<script[^>]*type=.application\/ld+json.[^>]*>//g' \
+        | sed 's/<\/script>.*//g' \
+        | sed 's/^[^\{]*//' \
+        > ${TMP_SOURCE_JSON_RAW_FILE}
+    fi
 
     echo $( \
       cat "${TMP_SOURCE_JSON_RAW_FILE}" \
@@ -706,9 +716,9 @@ function recipe_json2rst() {
   [[ -n "${YIELD}" ]] && INFO="${INFO}Yield: ${YIELD} |"
   INFO="${INFO%% }" # Remove Trailing space.
   if [[ ! "${INFO}" == "|" ]]; then
-    echo "$INFO" | sed 's/[^|]/-/g' | sed 's/\|/\+/g'
+    echo "$INFO" | sed 's/[^|]/-/g' | sed 's/|/\+/g'
     echo "$INFO"
-    echo "$INFO" | sed 's/[^|]/-/g' | sed 's/\|/\+/g'
+    echo "$INFO" | sed 's/[^|]/-/g' | sed 's/|/\+/g'
     echo ""
   fi
 
