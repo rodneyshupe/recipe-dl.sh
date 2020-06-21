@@ -59,7 +59,7 @@ ARG_PASSED_URLS=""
 
 function usage {
   echo "Usage: ${SCRIPT_NAME} [-ahjmros] [-f infile] [-o outfile] <URL> [<URL] ..."
-  if [[ ! -z $1 ]]; then
+  if [ $# -eq 0 ] || [ -z "$1" ]; then
     echo "  -a|--authorize         Force authorization of Cook Illustrated sites"
     #echo "  -d|--debug             Debug"
     echo "  -h|--help              Display help"
@@ -113,6 +113,7 @@ function parse_arguments () {
       -h|--help)
         echo_info "$(usage)"
         shift
+        exit 0
         ;;
       -*|--*=) # unsupported flags
         echo_error "ERROR: Unsupported flag $1"
@@ -180,18 +181,18 @@ function rawurlencode() {
 }
 
 function rawtime2minutes() {
-  _TIME=$1
+  _TIME="${1:-}"
 
-  if [[ ${_TIME} != null ]] && [[ ! -z ${_TIME} ]]; then
+  if [[ ${_TIME} != null ]] && [[ -n "${_TIME}" ]]; then
     local HOURS=0
     local MINUTES=0
     local HOURS_RAW=$(echo "${_TIME}" | sed 's/^P.*T\([0-9]*\)H.*/\1/g')
     local MINUTES_RAW=$(echo "${_TIME}" | sed 's/^P.*[H,T]\([0-9]*\)M.*/\1/g')
 
-    if [[ ! -z ${HOURS_RAW} ]] && [ -n "$HOURS_RAW" ] && [ "$HOURS_RAW" -eq "$HOURS_RAW" ] 2>/dev/null; then
+    if [[ -n "${HOURS_RAW}" ]] && [ -n "$HOURS_RAW" ] && [ "$HOURS_RAW" -eq "$HOURS_RAW" ] 2>/dev/null; then
       HOURS=$(( ${HOURS_RAW} ))
     fi
-    if [[ ! -z ${MINUTES_RAW} ]] && [ -n "$MINUTES_RAW" ] && [ "$MINUTES_RAW" -eq "$MINUTES_RAW" ] 2>/dev/null; then
+    if [[ -n "${MINUTES_RAW}" ]] && [ -n "$MINUTES_RAW" ] && [ "$MINUTES_RAW" -eq "$MINUTES_RAW" ] 2>/dev/null; then
       MINUTES=$(( ${MINUTES_RAW} ))
     fi
 
@@ -207,7 +208,7 @@ function minutes2time() {
 
   local TIME=""
 
-  if [[ ! -z ${_MINUTES} ]] && [[ ${_MINUTES} != null ]] && [[ ${_MINUTES} -gt 0 ]]; then
+  if [[ -n "${_MINUTES}" ]] && [[ ${_MINUTES} != null ]] && [[ ${_MINUTES} -gt 0 ]]; then
     local HOUR=$(( ${_MINUTES}/60 ))
     local MINUTES=$(( ${_MINUTES}-(( ${HOUR}*60 )) ))
 
@@ -238,7 +239,7 @@ function check_requirements() {
   command_exists jq || MISSING="${MISSING}$(echo '  jq')"
   command_exists hxselect || MISSING="${MISSING}$(echo '  hxnormalize and hxselect (packaged in html-xml-utils)')"
 
-  if [[ ! -z ${MISSING} ]]; then
+  if [[ -n "${MISSING}" ]]; then
     echo_error "ERROR: Script requires the following commands which are not installed."
     echo_error "${MISSING}"
     echo_error "Aborting."
@@ -440,7 +441,7 @@ function ci2json() {
     cat "${TMP_SOURCE_JSON_FILE}" | jq '.props.initialState.content.documents' | jq -r '.[].ingredientGroups['${group_index}'].fields.recipeIngredientItems[].fields|[.qty, .preText, .ingredient.fields.title, .postText] | @tsv' | \
       while IFS=$'\t' read -r qty unit item modifier; do
         ((ingredient_count++))
-        [[ ! -z ${modifier} ]] && [[ ${modifier} != ,* ]] && modifier=" ${modifier}"
+        [[ -n "${modifier}" ]] && [[ ${modifier} != ,* ]] && modifier=" ${modifier}"
         echo "        $([[ $ingredient_count -gt 1 ]] && echo ', ')\"$(echo "${qty} ${unit} ${item}${modifier}" | sed 's/\ \ */ /g')\""  >> ${TMP_RECIPE_JSON_FILE}
       done
     echo "      ]" >> "${TMP_RECIPE_JSON_FILE}"
@@ -456,7 +457,7 @@ function ci2json() {
     cat "${TMP_SOURCE_JSON_FILE}" | jq '.props.initialState.content.documents' | jq -r '.[].ingredientGroups[].fields.recipeIngredientItems[].fields|[.qty, .preText, .ingredient.fields.title, .postText] | @tsv' | \
       while IFS=$'\t' read -r qty unit item modifier; do
         ((ingredient_count++))
-        [[ ! -z ${modifier} ]] && [[ ${modifier} != ,* ]] && modifier=" ${modifier}"
+        [[ -n "${modifier}" ]] && [[ ${modifier} != ,* ]] && modifier=" ${modifier}"
         echo "$([[ $ingredient_count -gt 1 ]] && echo ', ')\"$(echo "${qty} ${unit} ${item}${modifier}" | sed 's/\ \ */ /g')\""  >> ${TMP_RECIPE_JSON_FILE}
       done
     echo "      ]" >> "${TMP_RECIPE_JSON_FILE}"
@@ -516,6 +517,7 @@ function generic2json() {
       | tr -d '\n' \
       | sed 's/.*<script[^>]*type=.application\/ld+json.[^>]*>//g' \
       | sed 's/<\/script>.*//g' \
+      | sed 's/^[^\{]*//' \
       > ${TMP_SOURCE_JSON_RAW_FILE}
 
     echo $( \
@@ -532,8 +534,8 @@ function generic2json() {
     echo "  \"url\": \"$_URL\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     local TITLE=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .headline | sed 's/\"/\\\"/g')
-    if [[ -z ${TITLE} ]] || [[ ${TITLE} == null ]]; then
-      TITLE=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .name | sed 's/\"/\\\"/g')
+    if [[ -z "${TITLE}" ]] || [[ ${TITLE} == null ]]; then
+      TITLE=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .name 2>/dev/null | sed 's/\"/\\\"/g')
     fi
     echo "  \"title\": \"${TITLE}\"," >> "${TMP_RECIPE_JSON_FILE}"
     unset TITLE
@@ -542,7 +544,7 @@ function generic2json() {
     echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     local YIELD=$(echo $(cat ${TMP_SOURCE_JSON_FILE} | jq --compact-output '.recipeYield | max' 2>/dev/null || cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.recipeYield' 2>/dev/null ) | tr -d '\n'  | sed 's/\"//g')
-    if [[ -z ${YIELD} ]] || [[ $YIELD == null ]]; then
+    if [[ -z "${YIELD}" ]] || [[ $YIELD == null ]]; then
       YIELD=""
     fi
     echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
@@ -570,18 +572,21 @@ function generic2json() {
     echo "  \"totaltime\": \"$(minutes2time ${TOTAL_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     local PUBLISHER=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.publisher.name'  2>/dev/null | sed 's/\"/\\\"/g')
-    if [[ -z ${PUBLISHER} ]] || [[ ${PUBLISHER} == null ]]; then
+    if [[ -z "${PUBLISHER}" ]] || [[ ${PUBLISHER} == null ]]; then
       PUBLISHER=$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq '."@graph"[]? | select(."@type" == "Organization")? | .name?' 2>/dev/null | sed 's/\"//g')
     fi
-    if [[ -z ${PUBLISHER} ]] || [[ ${PUBLISHER} == null ]]; then
+    if [[ -z "${PUBLISHER}" ]] || [[ ${PUBLISHER} == null ]]; then
       PUBLISHER=""
     fi
     local AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author[].name 2>/dev/null | sed 's/\"/\\\"/g')"
-    if [[ -z ${AUTHOR} ]] || [[  ${AUTHOR} == null ]]; then
-      AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author.name | sed 's/\"/\\\"/g')"
+    if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]]; then
+      AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author.name 2>/dev/null | sed 's/\"/\\\"/g')"
+      if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]]; then
+        AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author 2>/dev/null | sed 's/\"/\\\"/g')"
+      fi
     fi
-    if [[ ! -z ${PUBLISHER} ]]; then
-      if [[ -z ${AUTHOR} ]] || [[  ${AUTHOR} == null ]] || [[ "${PUBLISHER}" == "${AUTHOR}" ]]; then
+    if [[ -n "${PUBLISHER}" ]]; then
+      if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]] || [[ "${PUBLISHER}" == "${AUTHOR}" ]]; then
         AUTHOR="${PUBLISHER}"
       else
         AUTHOR="${PUBLISHER} (${AUTHOR})"
@@ -597,7 +602,7 @@ function generic2json() {
     local i_count=0
     for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeIngredient[]); do
       ((i_count++))
-      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ')\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
     done
     unset ingredient
     unset i_count
@@ -606,30 +611,60 @@ function generic2json() {
     echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
 
     # Directions
-    echo "  \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+    echo "  \"direction_groups\": [" >> "${TMP_RECIPE_JSON_FILE}"
     IFS=$'\n'
     cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[] > /dev/null 2>&1
     ret_code=$?
     if [ ${ret_code} -eq 0 ]; then
       local direction_count=0
-      cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[].text > /dev/null 2>&1
+      cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[].itemListElement[].text > /dev/null 2>&1
       ret_code=$?
       if [ ${ret_code} -eq 0 ]; then
-        for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[].text); do
-          ((direction_count++))
-          echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        local group_count=0
+        for group in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[].name); do
+          echo "    $([[ $group_count -gt 0 ]] && echo ','){" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "      \"group\": \"$(echo ${group} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+          direction_count=0
+          for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[${group_count}].itemListElement[].text); do
+            ((direction_count++))
+            echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+          done
+          echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+          ((group_count++))
         done
       else
-        for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[]); do
-          ((direction_count++))
-          echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
-        done
+        cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeInstructions[].text > /dev/null 2>&1
+        ret_code=$?
+        if [ ${ret_code} -eq 0 ]; then
+          echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+          for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[].text); do
+            ((direction_count++))
+            echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+          done
+          echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+        else
+          echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+          echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+          for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions[]); do
+            ((direction_count++))
+            echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+          done
+          echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+        fi
       fi
     else
       direction_count=1
+      echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
       echo "    \"1. $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
     fi
-    echo "  ]" >> "${TMP_RECIPE_JSON_FILE}"
+    echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
     echo "}" >> "${TMP_RECIPE_JSON_FILE}"
     unset direction
     unset direction_count
@@ -666,9 +701,9 @@ function recipe_json2rst() {
   local TOTAlTIME=$(cat ${_JSON_FILE} | jq --raw-output .totaltime)
 
   local INFO="| "
-  [[ ! -z ${PREPTIME} ]] && INFO="${INFO}Prep: ${PREPTIME} | "
-  [[ ! -z ${TOTAlTIME} ]] && INFO="${INFO}Total: ${TOTAlTIME} | "
-  [[ ! -z ${YIELD} ]] && INFO="${INFO}Yield: ${YIELD} |"
+  [[ -n "${PREPTIME}" ]] && INFO="${INFO}Prep: ${PREPTIME} | "
+  [[ -n "${TOTAlTIME}" ]] && INFO="${INFO}Total: ${TOTAlTIME} | "
+  [[ -n "${YIELD}" ]] && INFO="${INFO}Yield: ${YIELD} |"
   INFO="${INFO%% }" # Remove Trailing space.
   if [[ ! "${INFO}" == "|" ]]; then
     echo "$INFO" | sed 's/[^|]/-/g' | sed 's/\|/\+/g'
@@ -683,7 +718,7 @@ function recipe_json2rst() {
   echo ""
 
   local DESCRIPTION=$(cat ${_JSON_FILE} | jq --raw-output .description)
-  if [[ $DESCRIPTION != null ]] && [[ ! -z ${DESCRIPTION} ]]; then
+  if [[ $DESCRIPTION != null ]] && [[ -n "${DESCRIPTION}" ]]; then
     echo "$DESCRIPTION"  | fmt -w 75
     echo ""
   fi
@@ -696,7 +731,7 @@ function recipe_json2rst() {
   local group_count=$(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups | length')
   while [[ $group_index -lt $group_count ]]; do
     grouptitle=$(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups['${group_index}'].title')
-    if [[ ${grouptitle} != null ]] && [[ ! -z ${grouptitle} ]]; then
+    if [[ ${grouptitle} != null ]] && [[ -n "${grouptitle}" ]]; then
       echo
       echo "${grouptitle}"
       echo "${grouptitle}" | sed 's/./\^/g'
@@ -717,17 +752,30 @@ function recipe_json2rst() {
   echo "----------"
   echo ""
   IFS=$'\n'
-  local step=0
-  for direction in $(cat ${_JSON_FILE} | jq --raw-output '.directions[]'); do
-    ((step++))
-    i=0
-    for line in $(echo ${direction} | sed 's/\*\*\*//g' | fmt -w 70); do
-      ((i++))
-      [[ $i -eq 1 ]] && echo -ne "$step. " || echo -ne "$(echo ${step}. | sed 's/./ /g') "
-      echo "$line"
+  group_index=0
+  for grouptitle_raw in $(cat ${_JSON_FILE} | jq '.direction_groups[].group'); do
+    grouptitle=$(echo $grouptitle_raw | sed 's/\"//g')
+    if [[ -n ${grouptitle} ]] || [[ "${grouptitle}" != "" ]]; then
+      if [[ ${group_index} -gt 0 ]]; then
+        echo ""
+      fi
+      echo "${grouptitle}"
+      echo "${grouptitle}" | sed 's/./\^/g'
+      echo ""
+    fi
+    local step=0
+    for direction in $(cat ${_JSON_FILE} | jq --raw-output '.direction_groups['${group_index}'].directions[]'); do
+      ((step++))
+      i=0
+      for line in $(echo ${direction} | sed 's/\*\*\*//g' | fmt -w 70); do
+        ((i++))
+        [[ $i -eq 1 ]] && echo -ne "$step. " || echo -ne "$(echo ${step}. | sed 's/./ /g') "
+        echo "$line"
+      done
+      unset line
+      unset i
     done
-    unset line
-    unset i
+    ((group_index++))
   done
   unset direction
   unset step
@@ -767,11 +815,11 @@ function recipe_json2rst() {
 }
 
 function recipe_json2md() {
-  _JSON_FILE=$1
-  _HEADING_PREFIX=$2
+  _JSON_FILE=${1}
+  _HEADING_PREFIX=${2:-}
 
   local TITLE=$(cat ${_JSON_FILE} | jq --raw-output .title)
-  echo "${_HEADING_PREFIX}#${TITLE}"
+  echo "${_HEADING_PREFIX}# ${TITLE}"
   echo ""
 
   local YIELD=$(cat ${_JSON_FILE} | jq --raw-output .yield)
@@ -790,7 +838,7 @@ function recipe_json2md() {
   echo ""
 
   local DESCRIPTION=$(cat ${_JSON_FILE} | jq --raw-output .description)
-  if [[ $DESCRIPTION != null ]] && [[ ! -z ${DESCRIPTION} ]]; then
+  if [[ $DESCRIPTION != null ]] && [[ -n "${DESCRIPTION}" ]]; then
     echo $DESCRIPTION  | fmt -w 75
     echo ""
   fi
@@ -802,10 +850,9 @@ function recipe_json2md() {
   local group_count=$(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups | length')
   while [[ $group_index -lt $group_count ]]; do
     grouptitle=$(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups['${group_index}'].title')
-    if [[ ${grouptitle} != null ]] && [[ ! -z ${grouptitle} ]]; then
+    if [[ ${grouptitle} != null ]] && [[ -n "${grouptitle}" ]]; then
       echo
-      echo "${grouptitle}"
-      echo "${grouptitle}" | sed 's/./\^/g'
+      echo "### ${grouptitle}"
     fi
     for ingredient in $(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups['${group_index}'].ingredients[]'); do
       echo "* ${ingredient}"
@@ -822,17 +869,29 @@ function recipe_json2md() {
   echo "${_HEADING_PREFIX}## Directions"
   echo ""
   IFS=$'\n'
-  local step=0
-  for direction in $(cat ${_JSON_FILE} | jq --raw-output .directions[]); do
-    ((step++))
-    i=0
-    for line in $(echo "${direction}" | sed 's/\*\*\*//g' | fmt -w 70); do
-      ((i++))
-      [[ $i -eq 1 ]] && echo -ne "$step. " || echo -ne "$(echo ${step}. | sed 's/./ /g') "
-      echo "$line"
+  group_index=0
+  for grouptitle_raw in $(cat ${_JSON_FILE} | jq '.direction_groups[].group'); do
+    grouptitle=$(echo ${grouptitle_raw} | sed 's/\"//g')
+    if [[ -n ${grouptitle} ]] || [[ "${grouptitle}" != "" ]]; then
+      if [[ ${group_index} -gt 0 ]]; then
+        echo ""
+      fi
+      echo "### ${grouptitle}"
+      echo ""
+    fi
+    local step=0
+    for direction in $(cat ${_JSON_FILE} | jq --raw-output '.direction_groups['${group_index}'].directions[]'); do
+      ((step++))
+      i=0
+      for line in $(echo "${direction}" | sed 's/\*\*\*//g' | fmt -w 70); do
+        ((i++))
+        [[ $i -eq 1 ]] && echo -ne "$step. " || echo -ne "$(echo ${step}. | sed 's/./ /g') "
+        echo "$line"
+      done
+      unset line
+      unset i
     done
-    unset line
-    unset i
+    ((group_index++))
   done
   unset direction
   unset step
@@ -874,7 +933,7 @@ function output_filename() {
   _FILENAME=$1
   _EXT=$2
 
-  if [[ -z ${_EXT} ]]; then
+  if [[ -z "${_EXT}" ]]; then
     echo "${_FILENAME}"
   else
     echo "$(echo "${_FILENAME}.${_EXT}" | sed "s/\.${_EXT}\.${_EXT}/\.${_EXT}/g" )"
@@ -905,7 +964,7 @@ function recipe_output_file() {
   esac
 
   if [[ ${FLAG_SAVE_TO_FILE} -eq 1 ]]; then
-    if [[ -z ${ARG_OUT_FiLE} ]]; then
+    if [[ -z "${ARG_OUT_FiLE}" ]]; then
       SAVE_FILE="$(output_filename $(echo ${TITLE} | sed "s/[^a-zA-Z0-9]*//g") ${_EXT})"
     else
       SAVE_FILE="$(output_filename ${ARG_OUT_FiLE} ${_EXT})"
@@ -924,7 +983,7 @@ function recipe_output() {
   _JSON_FILE=$1
 
   TITLE="$(cat ${_JSON_FILE} | jq --raw-output .title)"
-  if [[ ! -z ${TITLE} ]]; then
+  if [[ -n "${TITLE}" ]]; then
     echo_info "   Processing complete: ${TITLE}"
 
     [[ ${FLAG_OUTPUT_JSON} -eq 1 ]] && recipe_output_file "${_JSON_FILE}" "json"
@@ -943,7 +1002,7 @@ function main() {
 
   check_requirements
 
-  if [[ -z ${ARG_IN_FiLE} ]]; then
+  if [[ -z "${ARG_IN_FiLE}" ]]; then
     for URL in ${ARG_PASSED_URLS}; do
       echo_info "Processsing ${URL}..."
 
