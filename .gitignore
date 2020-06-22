@@ -9,3 +9,6 @@
 # Except for README files
 !README.md
 !README.rst
+
+# Exempt the test reference files.
+!tests/reference-files/*
