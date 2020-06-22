@@ -502,6 +502,154 @@ function ci2json() {
   cat "${TMP_RECIPE_JSON_FILE}" | jq --raw-output && rm "${TMP_RECIPE_JSON_FILE}"
 }
 
+function epicurious2json() {
+  _URL=$1
+
+  local TMP_RECIPE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.json.XXXXXX)"
+  local TMP_SOURCE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_data.json.XXXXXX)"
+  local TMP_SOURCE_JSON_RAW_FILE="$(mktemp /tmp/${FUNCNAME[0]}_raw.json.XXXXXX)"
+  local TMP_SOURCE_HTML_FILE="$(mktemp /tmp/${FUNCNAME[0]}.html.XXXXXX)"
+
+  curl --compressed --silent $_URL > ${TMP_SOURCE_HTML_FILE}
+
+  cat ${TMP_SOURCE_HTML_FILE} \
+    | hxnormalize -x 2>/dev/null \
+    | hxselect -i -c "script" \
+    | grep "root.__INITIAL_STATE__.store" \
+    | sed 's/[^}]*$//' | sed 's/^[^{]*//' \
+    | sed 's/"email":{"regExp":.*,"password"/"email":{"regExp":"","password"/g' \
+    | sed 's/"password":{"regExp":.*,"messages"/"password":{"regExp":""},"messages"/g' \
+    > ${TMP_SOURCE_JSON_RAW_FILE}
+
+  cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '.content' > "${TMP_SOURCE_JSON_FILE}"
+
+  echo "{" > "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"url\": \"$_URL\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"title\": \"$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .hed | sed 's/\"/\\\"/g')\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  DESCRIPTION="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .dek | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr '\r' ' ' | tr '\n' ' ' | sed 's/\ \ //g' )"
+  echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  local YIELD=$(cat ${TMP_SOURCE_JSON_FILE} | jq --compact-output '.servingSizeInfo.servingSizeDescription' 2>/dev/null | tr -d '\n'  | sed 's/\"//g')
+  if [[ -z "${YIELD}" ]] || [[ $YIELD == null ]]; then
+    YIELD=""
+  fi
+  echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  # Parse Time
+  PREP_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedPrepTime)) ))
+  COOK_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedCookTime)) ))
+  TOTAL_MINUTES=$(( ${PREP_MINUTES} + ${COOK_MINUTES} ))
+  if [[ $PREP_MINUTES -eq 0 ]] && [[ $TOTAL_MINUTES -gt 0 ]] && [[ $COOK_MINUTES -gt 0 ]]; then
+    PREP_MINUTES=$(( ${TOTAL_MINUTES} - ${COOK_MINUTES} ))
+  fi
+
+  if [[ ${PREP_MINUTES} -gt 0 ]]; then
+    echo "  \"preptime\": \"$(minutes2time ${PREP_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
+  else
+    echo "  \"preptime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  fi
+
+  if [[ ${COOK_MINUTES} -gt 0 ]]; then
+    echo "  \"cooktime\": \"$(minutes2time ${COOK_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
+  else
+    echo "  \"cooktime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  fi
+
+  echo "  \"totaltime\": \"$(minutes2time ${TOTAL_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  local PUBLISHER="Epicurious"
+  local AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author[].name 2>/dev/null | sed 's/\"/\\\"/g')"
+  if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]]; then
+    AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author.name 2>/dev/null | sed 's/\"/\\\"/g')"
+    if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]]; then
+      AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author 2>/dev/null | sed 's/\"/\\\"/g')"
+    fi
+  fi
+  if [[ -z "${AUTHOR}" ]] || [[ ${AUTHOR} == null ]] || [[ "${AUTHOR}" == "[]" ]] || [[ "${PUBLISHER}" == "${AUTHOR}" ]]; then
+    AUTHOR="${PUBLISHER}"
+  else
+    AUTHOR="${PUBLISHER} (${AUTHOR})"
+  fi
+  echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  # Ingredient Groups and ingredients
+  echo "  \"ingredient_groups\": [{" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"title\":\"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  IFS=$'\n'
+  local i_count=0
+  for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.ingredientGroups[].ingredients[].description'); do
+    ((i_count++))
+    echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+  done
+  unset ingredient
+  unset i_count
+  unset IFS
+  echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"direction_groups\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  IFS=$'\n'
+  cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.preparationGroups[]' > /dev/null 2>&1
+  ret_code=$?
+  if [ ${ret_code} -eq 0 ]; then
+    local direction_count=0
+    local group_count=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.preparationGroups | length')
+    if [ ${group_count} -gt 1 ]; then
+      group_idx=0
+
+      while [ ${group_idx} -lt ${group_count} ]; do
+        group=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.preparationGroups['${group_idx}'].hed')
+        echo "    $([[ $group_idx -gt 0 ]] && echo ','){" >> "${TMP_RECIPE_JSON_FILE}"
+        echo "      \"group\": \"$(echo ${group} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+        direction_count=0
+        for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .preparationGroups[${group_idx}].steps[].description); do
+          ((direction_count++))
+          echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        done
+        echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+        ((group_idx++))
+      done
+    else
+      echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+      for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .preparationGroups[].steps[].description); do
+        ((direction_count++))
+        echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      done
+      echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+    fi
+  fi
+
+  #TODO: Add .prepNotes
+
+  echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
+  unset direction
+  unset direction_count
+  unset IFS
+
+  echo "}" >> "${TMP_RECIPE_JSON_FILE}"
+
+  cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
+
+  if [[ $FLAG_DEBUG -eq 1 ]]; then
+    echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
+    echo_debug "SOURCE_JSON_RAW_FILE=${TMP_SOURCE_JSON_RAW_FILE}"
+    echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
+    echo_debug "RECIPE_JSON_FILE    =${TMP_RECIPE_JSON_FILE}"
+  else
+    rm "${TMP_SOURCE_HTML_FILE}"
+    rm "${TMP_SOURCE_JSON_RAW_FILE}"
+    rm "${TMP_SOURCE_JSON_FILE}"
+    rm "${TMP_RECIPE_JSON_FILE}"
+  fi
+}
+
 function generic2json() {
   _URL=$1
 
@@ -1021,6 +1169,9 @@ function main() {
       case "${DOMAIN}" in
         www.cooksillustrated.com|www.cookscountry.com|www.americatestkitchen.com)
           ci2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
+          ;;
+        www.epicurious.com)
+          epicurious2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
         #cooking.nytimes.com|www.bonappetit.com)
         #www.foodnetwork.com|www.cookingchanneltv.com)
