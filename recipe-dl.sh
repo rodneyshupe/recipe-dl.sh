@@ -576,20 +576,41 @@ function epicurious2json() {
   echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   # Ingredient Groups and ingredients
-  echo "  \"ingredient_groups\": [{" >> "${TMP_RECIPE_JSON_FILE}"
-  echo "    \"title\":\"\"," >> "${TMP_RECIPE_JSON_FILE}"
-  echo "    \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"ingredient_groups\": [" >> "${TMP_RECIPE_JSON_FILE}"
   IFS=$'\n'
-  local i_count=0
-  for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.ingredientGroups[].ingredients[].description'); do
-    ((i_count++))
-    echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
-  done
-  unset ingredient
-  unset i_count
-  unset IFS
-  echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
-  echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
+  cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.ingredientGroups[]' > /dev/null 2>&1
+  ret_code=$?
+  if [ ${ret_code} -eq 0 ]; then
+    local ingredient_count=0
+    local group_count=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.ingredientGroups | length')
+    if [ ${group_count} -gt 1 ]; then
+      group_idx=0
+
+      while [ ${group_idx} -lt ${group_count} ]; do
+        group=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.ingredientGroups['${group_idx}'].hed')
+        echo "    $([[ $group_idx -gt 0 ]] && echo ','){" >> "${TMP_RECIPE_JSON_FILE}"
+        echo "      \"title\": \"$(echo ${group} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        echo "    , \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
+        ingredient_count=0
+        for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .ingredientGroups[${group_idx}].ingredients[].description); do
+          ((ingredient_count++))
+          echo "    $([[ $ingredient_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+        done
+        echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+        ((group_idx++))
+      done
+    else
+      echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "      \"title\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "    , \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
+      for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .ingredientGroups[].ingredients[].description); do
+        ((ingredient_count++))
+        echo "    $([[ $ingredient_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      done
+      echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
+    fi
+  fi
+  echo "    ]," >> "${TMP_RECIPE_JSON_FILE}"
 
   echo "  \"direction_groups\": [" >> "${TMP_RECIPE_JSON_FILE}"
   IFS=$'\n'
@@ -626,12 +647,12 @@ function epicurious2json() {
     fi
   fi
 
-  #TODO: Add .prepNotes
-
   echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
   unset direction
   unset direction_count
   unset IFS
+  #TODO: Add .prepNotes
+
 
   echo "}" >> "${TMP_RECIPE_JSON_FILE}"
 
@@ -890,9 +911,12 @@ function recipe_json2rst() {
   while [[ $group_index -lt $group_count ]]; do
     grouptitle=$(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups['${group_index}'].title')
     if [[ ${grouptitle} != null ]] && [[ -n "${grouptitle}" ]]; then
-      echo
+      if [[ $group_index -gt 0 ]]; then
+        echo
+      fi
       echo "${grouptitle}"
       echo "${grouptitle}" | sed 's/./\^/g'
+      echo
     fi
     for ingredient in $(cat ${_JSON_FILE} | jq --raw-output '.ingredient_groups['${group_index}'].ingredients[]'); do
       echo "- ${ingredient}"
