@@ -3,38 +3,24 @@ trap 'rc=$?; echo "ERR at line ${LINENO} (rc: $rc)"; exit $rc' ERR
 #trap 'rc=$?; echo "EXIT (rc: $rc)"; exit $rc' EXIT
 set -u
 
-#Format for the below would be "Options|URL|ReferenceFile
-DEFAULT_TESTS=( \
-    "https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
-    "https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
-    "https://www.bonappetit.com/recipe/instant-pot-glazed-and-grilled-ribs|InstantPotGlazedandGrilledRibs.json" \
-    "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
-    "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
-    "https://www.saveur.com/perfect-brown-rice-recipe/|PerfectBrownRice.rst" \
-    "https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/|LambRibsWithSpicyHarissaBarbecueSauceRecipe.json"
-    "https://www.thechunkychef.com/easy-slow-cooker-mongolian-beef-recipe/|SlowCookerMongolianBeefRecipe.md" \
-    "https://minimalistbaker.com/spicy-red-lentil-curry/|SpicyRedLentilCurry.rst" \
-    "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
-    "https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
-    "https://www.cookingchanneltv.com/recipes/alton-brown/fondue-finally-reloaded-5496018|FondueFinallyReloaded.rst" \
-    "https://www.finecooking.com/recipe/herbed-grill-roasted-lamb|HerbedGrillRoastedLamb.rst" \
-    "https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" \
-  )
+SCRIPT_NAME=$0
 
 TESTS=()
 
-DEFAULT_FAILURE_LOG_FILE="./test.failures.log"
 FAILURE_LOG_FILE=""
 
 FLAG_DEBUG=0
 FLAG_APPEND_LOG=0
+FLAG_SILENT=0
+FLAG_LOADTESTS=0
+FLAG_APPENDTESTS=0
 
 PRINT_WIDTH=100
 
-SCRIPT_NAME=$0
 
 EX_OK=0            # successful termination
 EX_USAGE=64        # command line usage error
+EX_NOINPUT=66      # cannot open input
 EX_OSFILE=72       # critical OS file missing
 EX_IOERR=74        # input/output error
 
@@ -51,6 +37,8 @@ if [ -z "${PROJECT_PATH}" ] ; then
   exit ${EX_IOERR}  # fail
 fi
 REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
+DEFAULT_TESTS_FILE="$SCRIPT_PATH/recipe-dl.tests"
+DEFAULT_FAILURE_LOG_FILE="${SCRIPT_PATH}/test.failures.log"
 
 function usage {
   echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>] [-t <URL> <ReferenceFile>] ..."
@@ -61,6 +49,8 @@ function usage {
     echo "  -a|--append-log                 Append to existing log."
     echo "  -r|--reset-references           Instead of tests resets the reference files"
     echo "  -t|--test <URL> <ReferenceFile> URL to test. Overrides default tests."
+    echo "     --load-tests <FILE>          load tests from file"
+    echo "     --append-tests               Append manual tests to test file."
   fi
 }
 
@@ -97,6 +87,17 @@ function parse_arguments () {
         shift
         shift
         ;;
+      --load-tests)
+        shift
+        FLAG_LOADTESTS=1
+        TESTS_FILE="${1}"
+        load_tests "${TESTS_FILE}"
+        shift
+        ;;
+      --append-tests)
+        shift
+        FLAG_APPENDTESTS=1
+        ;;
       -*|--*=) # unsupported flags
         echo_error "ERROR: Unsupported flag $1"
         echo_error "$(usage)"
@@ -113,7 +114,8 @@ function parse_arguments () {
     FAILURE_LOG_FILE="${DEFAULT_FAILURE_LOG_FILE}"
   fi
   if [ ${#TESTS[@]} -eq 0 ]; then
-    TESTS=("${DEFAULT_TESTS[@]}")
+    TESTS_FILE="${DEFAULT_TESTS_FILE}"
+    load_tests "${TESTS_FILE}"
   fi
 }
 
@@ -201,6 +203,41 @@ function option_from_file() {
   esac
   echo_debug "OPTION=${OPTION}"
   echo ${OPTION}
+}
+
+function load_tests() {
+  local _TESTS_FILE=${1:-}
+
+  echo_debug "Read in test parameteres."
+  if [ -s "${_TESTS_FILE}" ]; then
+    echo_debug "Reading from file: ${_TESTS_FILE}"
+    TESTS=()
+    IFS=
+    while read -r TEST_LINE; do
+      TEST_LINE="$(echo "${TEST_LINE}" | sed 's/\#.*$//g' | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g')"
+      if [[ "${TEST_LINE}" != "" ]] ; then
+        echo_debug "Adding Test: ${TEST_LINE}"
+        TESTS+=("${TEST_LINE}")
+      fi
+    done < "${_TESTS_FILE}"
+    unset IFS
+    echo_debug "Loaded ${#TESTS[@]} tests."
+  else
+    echo_error "Tests File (${_TESTS_FILE}) is missing."
+    exit ${EX_NOINPUT}
+  fi
+  unset _TESTS_FILE
+}
+
+function append_tests() {
+  if [ $FLAG_APPENDTESTS -ne 0 ] && [ ${#TESTS[@]} -gt 0 ]; then
+    if [ $FLAG_LOADTESTS -ne 0 ]; then
+      rm "${TESTS_FILE}" >/dev/null 2>&1
+    fi
+    for TEST in "${TESTS[@]}"; do
+      echo "${TEST}" >> "${TESTS_FILE}"
+    done
+  fi
 }
 
 function log_failure() {
@@ -297,6 +334,7 @@ function run_tests() {
   unset TEST
 }
 
-parse_arguments "$@"
 check_requirements
+parse_arguments "$@"
 run_tests
+append_tests
