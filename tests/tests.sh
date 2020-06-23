@@ -4,22 +4,30 @@ trap 'rc=$?; echo "ERR at line ${LINENO} (rc: $rc)"; exit $rc' ERR
 set -u
 
 #Format for the below would be "Options|URL|ReferenceFile
-TESTS=("https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
-       "https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
-       "https://www.bonappetit.com/recipe/instant-pot-glazed-and-grilled-ribs|InstantPotGlazedandGrilledRibs.json" \
-       "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
-       "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
-       "https://www.saveur.com/perfect-brown-rice-recipe/|PerfectBrownRice.rst" \
-       "https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/|LambRibsWithSpicyHarissaBarbecueSauceRecipe.json"
-       "https://www.thechunkychef.com/easy-slow-cooker-mongolian-beef-recipe/|SlowCookerMongolianBeefRecipe.md" \
-       "https://minimalistbaker.com/spicy-red-lentil-curry/|SpicyRedLentilCurry.rst" \
-       "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
-       "https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
-       "https://www.cookingchanneltv.com/recipes/alton-brown/fondue-finally-reloaded-5496018|FondueFinallyReloaded.rst" \
-       "https://www.finecooking.com/recipe/herbed-grill-roasted-lamb|HerbedGrillRoastedLamb.rst" \
-       "https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" )
+DEFAULT_TESTS=( \
+    "https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
+    "https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
+    "https://www.bonappetit.com/recipe/instant-pot-glazed-and-grilled-ribs|InstantPotGlazedandGrilledRibs.json" \
+    "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
+    "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
+    "https://www.saveur.com/perfect-brown-rice-recipe/|PerfectBrownRice.rst" \
+    "https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/|LambRibsWithSpicyHarissaBarbecueSauceRecipe.json"
+    "https://www.thechunkychef.com/easy-slow-cooker-mongolian-beef-recipe/|SlowCookerMongolianBeefRecipe.md" \
+    "https://minimalistbaker.com/spicy-red-lentil-curry/|SpicyRedLentilCurry.rst" \
+    "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
+    "https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
+    "https://www.cookingchanneltv.com/recipes/alton-brown/fondue-finally-reloaded-5496018|FondueFinallyReloaded.rst" \
+    "https://www.finecooking.com/recipe/herbed-grill-roasted-lamb|HerbedGrillRoastedLamb.rst" \
+    "https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" \
+  )
+
+TESTS=()
+
+DEFAULT_FAILURE_LOG_FILE="./test.failures.log"
+FAILURE_LOG_FILE=""
 
 FLAG_DEBUG=0
+FLAG_APPEND_LOG=0
 
 PRINT_WIDTH=100
 
@@ -45,17 +53,20 @@ fi
 REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
 
 function usage {
-  echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>]"
+  echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>] [-t <URL> <ReferenceFile>] ..."
   if [ $# -eq 0 ] || [ -z "$1" ]; then
     echo "  -d|--debug                      Add additional Output"
     echo "  -h|--help                       Display help"
+    echo "  -l|--log-file <FILE>            Specifiy Log File (Default: $DEFAULT_FAILURE_LOG_FILE) "
+    echo "  -a|--append-log                 Append to existing log."
     echo "  -r|--reset-references           Instead of tests resets the reference files"
-    echo "  -t|--test <URL> <ReferenceFile> URL to test"
+    echo "  -t|--test <URL> <ReferenceFile> URL to test. Overrides default tests."
   fi
 }
 
 function parse_arguments () {
-  ARG_PASSED_URLS=""
+  TESTS=()
+  FAILURE_LOG_FILE=""
   while (( "$#" )); do
     case "$1" in
       -d|--debug)
@@ -71,9 +82,20 @@ function parse_arguments () {
         shift
         exit 0
         ;;
+      -l|--log-file)
+        shift
+        FAILURE_LOG_FILE="$1"
+        shift
+        ;;
+      -a|--append-log)
+        FLAG_APPEND_LOG=1
+        shift
+        ;;
       -t|--test)
-        run_test "$2" "$3"
-        exit 0
+        shift
+        TESTS+=("$1|$2")
+        shift
+        shift
         ;;
       -*|--*=) # unsupported flags
         echo_error "ERROR: Unsupported flag $1"
@@ -87,6 +109,12 @@ function parse_arguments () {
         ;;
     esac
   done
+  if [[ "${FAILURE_LOG_FILE}" == "" ]]; then
+    FAILURE_LOG_FILE="${DEFAULT_FAILURE_LOG_FILE}"
+  fi
+  if [ ${#TESTS[@]} -eq 0 ]; then
+    TESTS=("${DEFAULT_TESTS[@]}")
+  fi
 }
 
 function command_exists() {
@@ -185,8 +213,6 @@ function log_failure() {
   echo_debug "  Params: _REFERENCE_FILE=${_REFERENCE_FILE}"
   echo_debug "  Params: _TMP_OUTPUT_FILE=${_TMP_OUTPUT_FILE}"
 
-  local FAILURE_LOG_FILE="./test.failures.log"
-
   echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
   echo "The file \"${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}\" is different from output for \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
   echo "diff output below" >> "${FAILURE_LOG_FILE}"
@@ -256,10 +282,10 @@ function reset_references {
   unset TEST
 }
 
-function main() {
-  parse_arguments "$@"
-  check_requirements
-
+function run_tests() {
+  if [ $FLAG_APPEND_LOG -eq 0 ] && [ ! -s $FLAG_APPEND_LOG ]; then
+    rm "$FAILURE_LOG_FILE" 2>/dev/null
+  fi
   # Loop through the tests
   for TEST in "${TESTS[@]}"; do
     local URL=$(cut -d'|' -f1 <<< "${TEST}")
@@ -271,4 +297,6 @@ function main() {
   unset TEST
 }
 
-main "$@"
+parse_arguments "$@"
+check_requirements
+run_tests
