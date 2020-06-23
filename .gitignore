@@ -12,4 +12,4 @@
 
 # Files related to tests
 test.output.*
-*.log.*
+test.failures.log
