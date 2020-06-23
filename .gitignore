@@ -10,5 +10,9 @@
 !README.md
 !README.rst
 
+# Files related to tests
+test.output.*
+*.log.*
+
 # Exempt the test reference files.
 !tests/reference-files/*
