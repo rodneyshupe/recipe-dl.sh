@@ -1,17 +1,86 @@
 #!/usr/bin/env bash
+trap 'rc=$?; echo "ERR at line ${LINENO} (rc: $rc)"; exit $rc' ERR
+#trap 'rc=$?; echo "EXIT (rc: $rc)"; exit $rc' EXIT
+set -u
 
 #Format for the below would be "Options|URL|ReferenceFile
-TESTS=(" |https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
-       "-r|https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
-       "-r|https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
-       "-m|https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
-       "-r|https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
-       "-j|https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
-       "-r|https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" )
+TESTS=("https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
+       "https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
+       "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
+       "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
+       "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
+       "https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
+       "https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" )
 
-FLAG_DEBUG=1
+FLAG_DEBUG=0
 
+PRINT_WIDTH=100
+
+SCRIPT_NAME=$0
+
+EX_OK=0            # successful termination
+EX_USAGE=64        # command line usage error
 EX_OSFILE=72       # critical OS file missing
+EX_IOERR=74        # input/output error
+
+SCRIPT_PATH=$(dirname $(readlink $0) 2>/dev/null || dirname $0)           # relative
+SCRIPT_PATH="`( cd \"${SCRIPT_PATH}\" && pwd )`"  # absolutized and normalized
+if [ -z "${SCRIPT_PATH}" ] ; then
+  echo_error "For some reason, the path is not accessible to the script (e.g. permissions re-evaled after suid)"
+  exit ${EX_IOERR}  # fail
+fi
+
+PROJECT_PATH="`( cd \"${SCRIPT_PATH}/..\" && pwd )`"  # absolutized and normalized
+if [ -z "${PROJECT_PATH}" ] ; then
+  echo_error "For some reason, the path is not accessible to the script (e.g. permissions re-evaled after suid)"
+  exit ${EX_IOERR}  # fail
+fi
+REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
+
+function usage {
+  echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>]"
+  if [ $# -eq 0 ] || [ -z "$1" ]; then
+    echo "  -d|--debug                      Add additional Output"
+    echo "  -h|--help                       Display help"
+    echo "  -r|--reset-references           Instead of tests resets the reference files"
+    echo "  -t|--test <URL> <ReferenceFile> URL to test"
+  fi
+}
+
+function parse_arguments () {
+  ARG_PASSED_URLS=""
+  while (( "$#" )); do
+    case "$1" in
+      -d|--debug)
+        FLAG_DEBUG=1
+        shift
+        ;;
+      -h|--help)
+        echo_info "$(usage)"
+        exit 0
+        ;;
+      -r|--reset-references)
+        reset_references
+        shift
+        exit 0
+        ;;
+      -t|--test)
+        run_test "$2" "$3"
+        exit 0
+        ;;
+      -*|--*=) # unsupported flags
+        echo_error "ERROR: Unsupported flag $1"
+        echo_error "$(usage)"
+        exit ${EX_USAGE}
+        ;;
+      *) # preserve positional arguments
+        echo_error "ERROR: Unsupported argument $1"
+        echo_error "$(usage)"
+        exit ${EX_USAGE}
+        ;;
+    esac
+  done
+}
 
 function command_exists() {
   command -v "$@" > /dev/null 2>&1
@@ -65,21 +134,29 @@ function check_requirements() {
   fi
 }
 
-SCRIPT_PATH=$(dirname $(readlink $0) 2>/dev/null || dirname $0)           # relative
-SCRIPT_PATH="`( cd \"${SCRIPT_PATH}\" && pwd )`"  # absolutized and normalized
-if [ -z "${SCRIPT_PATH}" ] ; then
-  # error; for some reason, the path is not accessible
-  # to the script (e.g. permissions re-evaled after suid)
-  exit 1  # fail
-fi
+function option_from_file() {
+  local _REFERENCE_FILE="${1}"
 
-PROJECT_PATH="`( cd \"${SCRIPT_PATH}/..\" && pwd )`"  # absolutized and normalized
-if [ -z "${PROJECT_PATH}" ] ; then
-  # error; for some reason, the path is not accessible
-  # to the script (e.g. permissions re-evaled after suid)
-  exit 1  # fail
-fi
-REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
+  echo_debug "Param: _REFERENCE_FILE=$_REFERENCE_FILE"
+  local FILENAME=$(basename -- "$_REFERENCE_FILE")
+  local EXTENTION="${FILENAME##*.}"
+  #echo_debug "FILENAME=${FILENAME}"
+  echo_debug "EXTENTION=${EXTENTION}"
+
+  case "${EXTENTION}" in
+    rst)
+      OPTION="-r"
+      ;;
+    md)
+      OPTION="-m"
+      ;;
+    json)
+      OPTION="-j"
+      ;;
+  esac
+  echo_debug "OPTION=${OPTION}"
+  echo ${OPTION}
+}
 
 function log_failure() {
   local _OPTIONS="${1:-}"
@@ -102,24 +179,24 @@ function log_failure() {
 }
 
 function run_test() {
-  local _OPTIONS="${1:-}"
-  local _URL="${2}"
-  local _REFERENCE_FILE="${3:-}"
+  local _URL="${1}"
+  local _REFERENCE_FILE="${2:-}"
 
+  local OPTION=$(option_from_file "${_REFERENCE_FILE}")
   local TMP_OUTPUT_FILE="$(mktemp ./test.output.XXXXXX)"
+  rm "${TMP_OUTPUT_FILE}"
 
-  echo_debug "  Params: _OPTIONS=${_OPTIONS}"
-  echo_debug "  Params: _URL=${_URL}"
-  echo_debug "  Params: _REFERENCE_FILE=${_REFERENCE_FILE}"
-  echo_debug "  Value: TMP_OUTPUT_FILE=${TMP_OUTPUT_FILE}"
+  echo_debug "Param: _URL=${_URL}"
+  echo_debug "Param: _REFERENCE_FILE=${_REFERENCE_FILE}"
+  echo_debug "Value: OPTION=${OPTION}"
+  echo_debug "Value: TMP_OUTPUT_FILE=${TMP_OUTPUT_FILE}"
 
-  PRINT_WIDTH=100
-  PRINT_PARAM_WIDTH=$(($PRINT_WIDTH-13))
-  PRINT_OPTIONS=""
-  PRINT_OPTIONS=$([ "${_OPTIONS}" != "" ] && [ "${_OPTIONS}" != " " ] && echo " (${_OPTIONS})")
-  PRINT_URL=$(printf '%-'$(($PRINT_PARAM_WIDTH))'s' "${_URL}$PRINT_OPTIONS")
+  local PRINT_PARAM_WIDTH=$(($PRINT_WIDTH-13))
+  local PRINT_OPTIONS=""
+  PRINT_OPTIONS=$([ "${OPTION}" != "" ] && [ "${OPTION}" != " " ] && echo " (${OPTION})")
+  local PRINT_URL=$(printf '%-'$(($PRINT_PARAM_WIDTH))'s' "${_URL}$PRINT_OPTIONS")
   if [ "${PRINT_URL:$(($PRINT_PARAM_WIDTH-1)):1}" == " " ]; then
-    PRINT_URL=$(printf '%.'$PRINT_PARAM_WIDTH's' "${_URL}${PRINT_OPTIONS}")
+    local PRINT_URL=$(printf '%.'$PRINT_PARAM_WIDTH's' "${_URL}${PRINT_OPTIONS}")
   else
     if [ "${PRINT_OPTIONS}" == "" ]; then
       PRINT_URL=$(printf '%.'$(($PRINT_PARAM_WIDTH-3))'s...' "${_URL}")
@@ -129,32 +206,53 @@ function run_test() {
   fi
   printf 'Test: %-'$PRINT_PARAM_WIDTH's ' "${PRINT_URL}"
 
-  ${PROJECT_PATH}/recipe-dl.sh ${_OPTIONS} -q -s -o "${TMP_OUTPUT_FILE}" "${_URL}" > /dev/null
 
-  TMP_OUTPUT_FILE_EXT="$(set -- $TMP_OUTPUT_FILE.*; echo "$1")"
-  echo_debug "Actual File $TMP_OUTPUT_FILE_EXT"
+  if [ -s "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" ]; then
+    ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${TMP_OUTPUT_FILE}" "${_URL}" > /dev/null
 
-  echo_debug "Comparing to: ${_REFERENCE_FILE}"
+    local TMP_OUTPUT_FILE_EXT="$(set -- $TMP_OUTPUT_FILE.*; echo "$1")"
+    echo_debug "Actual File $TMP_OUTPUT_FILE_EXT"
 
-  if diff --brief --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}" >/dev/null ; then
-    echo "[$(tput setaf 2; tput bold)PASS$(tput sgr 0)]"
+    if diff --brief --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}" >/dev/null ; then
+      echo "[$(tput setaf 2; tput bold)PASS$(tput sgr 0)]"
+    else
+      echo "[$(tput setaf 1; tput bold)FAIL$(tput sgr 0)] see log"
+      log_failure "${OPTION}" "${_URL}" "${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}"
+    fi
+    rm "${TMP_OUTPUT_FILE_EXT}" 2>/dev/null
   else
-    echo "[$(tput setaf 1; tput bold)FAIL$(tput sgr 0)] see log"
-    log_failure "${_OPTIONS}" "${_URL}" "${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}"
+    echo "[$(tput setaf 3; tput bold)MISSING$(tput sgr 0)]"
+    ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${_URL}" > /dev/null
   fi
-  rm "${TMP_OUTPUT_FILE}"
-  rm "${TMP_OUTPUT_FILE_EXT}"
 }
 
-check_requirements
+function reset_references {
+  # Lopp through the tests
+  for TEST in "${TESTS[@]}"; do
+    local URL=$(cut -d'|' -f1 <<< "${TEST}")
+    local REFERENCE_FILE=$(cut -d'|' -f2 <<< "${TEST}")
 
-#Lopp through the tests
-for TEST in "${TESTS[@]}"
-do
-  OPTIONS=$(cut -d'|' -f1 <<< "${TEST}")
-  URL=$(cut -d'|' -f2 <<< "${TEST}")
-  REFERENCE=$(cut -d'|' -f3 <<< "${TEST}")
+    local OPTION=$(option_from_file "${REFERENCE_FILE}")
+    echo_info "  Resetting ${REFERENCE_FILE}"
+    ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${REFERENCE_FILE}" "${URL}" > /dev/null
+    unset URL REFERENCE_FILE OPTION
+  done
+  unset TEST
+}
 
-  run_test "${OPTIONS}" "${URL}" "${REFERENCE}"
-  unset IFS
-done
+function main() {
+  parse_arguments "$@"
+  check_requirements
+
+  # Loop through the tests
+  for TEST in "${TESTS[@]}"; do
+    local URL=$(cut -d'|' -f1 <<< "${TEST}")
+    local REFERENCE_FILE=$(cut -d'|' -f2 <<< "${TEST}")
+
+    run_test "${URL}" "${REFERENCE_FILE}"
+    unset URL REFERENCE_FILE
+  done
+  unset TEST
+}
+
+main "$@"
