@@ -822,7 +822,7 @@ function generic2json() {
     echo "  \"title\": \"${TITLE}\"," >> "${TMP_RECIPE_JSON_FILE}"
     unset TITLE
 
-    DESCRIPTION="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .description | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr '\r' ' ' | tr '\n' ' ' | sed 's/\ \ //g' )"
+    DESCRIPTION="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .description | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr '\r' ' ' | tr '\n' ' ' | sed 's/\ \ //g' | sed 's/^ *null *$//g' )"
     echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     local YIELD=$(echo $(cat ${TMP_SOURCE_JSON_FILE} | jq --compact-output '.recipeYield | max' 2>/dev/null || cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.recipeYield' 2>/dev/null ) | tr -d '\n'  | sed 's/\"//g')
@@ -871,7 +871,9 @@ function generic2json() {
       if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]] || [[ "${PUBLISHER}" == "${AUTHOR}" ]]; then
         AUTHOR="${PUBLISHER}"
       else
-        AUTHOR="${PUBLISHER} (${AUTHOR})"
+        if [[ "$AUTHOR" != *"$PUBLISHER"* ]]; then
+          AUTHOR="${PUBLISHER} (${AUTHOR})"
+        fi
       fi
     fi
     echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
@@ -884,7 +886,7 @@ function generic2json() {
     local i_count=0
     for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeIngredient[]); do
       ((i_count++))
-      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' | sed 's/\ \ */ /g' | sed 's/\ *$//g')\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' | sed 's/  */ /g' | sed 's/[[:space:]]*$//' )\"" >> "${TMP_RECIPE_JSON_FILE}"
     done
     unset ingredient
     unset i_count
