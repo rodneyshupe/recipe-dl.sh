@@ -12,7 +12,8 @@ set -u
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
 
 # TODO: Site to add:
-# * https://www.epicurious.com  - Example: https://www.epicurious.com/recipes/food/views/grilled-marinated-leg-of-lamb-234655
+# * https:///www.saveur.com  - Example: https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
+# cat /tmp/generic2json.html.7QdarE | hxnormalize -x | tr -d '\r' | tr -d '\n' | hxselect -i -c 'li.instruction' | sed -e's/  */ /g'
 
 # Set temp files
 TEMP_RECIPE_JSON_FILE="/tmp/recipe.json"
@@ -39,6 +40,7 @@ EX_NOPERM=77       # permission denied
 unset \
   FLAG_SAVE_TO_FILE \
   FLAG_DEBUG \
+  FLAG_SILENT \
   FLAG_AUTHORIZE \
   FLAG_OUTPUT_JSON \
   FLAG_OUTPUT_MD \
@@ -49,6 +51,7 @@ unset \
 
 FLAG_SAVE_TO_FILE=0
 FLAG_DEBUG=0
+FLAG_SILENT=0
 FLAG_AUTHORIZE=0
 FLAG_OUTPUT_JSON=0
 FLAG_OUTPUT_MD=0
@@ -61,7 +64,8 @@ function usage {
   echo "Usage: ${SCRIPT_NAME} [-ahjmros] [-f infile] [-o outfile] <URL> [<URL] ..."
   if [ $# -eq 0 ] || [ -z "$1" ]; then
     echo "  -a|--authorize         Force authorization of Cook Illustrated sites"
-    #echo "  -d|--debug             Debug"
+    #echo "  -d|--debug             Add additional Output"
+    #echo "  -q|--quite            Suppress most output aka Silent Mode"
     echo "  -h|--help              Display help"
     echo "  -j|--output-json       Output results in JSON format"
     echo "  -m|--output-md         Output results in Markdown format"
@@ -77,6 +81,10 @@ function parse_arguments () {
     case "$1" in
       -d|--debug)
         FLAG_DEBUG=1
+        shift
+        ;;
+      -q|--silent)
+        FLAG_SILENT=1
         shift
         ;;
       -s|--save-to-file)
@@ -127,6 +135,11 @@ function parse_arguments () {
     esac
   done
 
+  if [ ${FLAG_DEBUG} -eq 1 ] && [ ${FLAG_SILENT} -eq 1 ]; then
+    FLAG_SILENT=0
+    echo_info "Debug option selected. Can not run in \"Silent Mode\""
+  fi
+
   FILETYPE_COUNT=0
   [[ ${FLAG_OUTPUT_JSON} -eq 1 ]] && ((FILETYPE_COUNT++))
   [[ ${FLAG_OUTPUT_MD} -eq 1 ]] && ((FILETYPE_COUNT++))
@@ -149,17 +162,27 @@ function command_exists() {
 }
 
 function echo_info() {
-  echo "$@" >$(tty)
+  if [[ $FLAG_SILENT -eq 0 ]]; then
+    echo "$@" >$(tty)
+  fi
 }
 
 function echo_debug() {
   if [[ $FLAG_DEBUG -eq 1 ]]; then
-    echo_info "${SCRIPT_NAME} DEBUG: $@"
+    local _BREADCRUMB=$(basename ${SCRIPT_NAME})
+    for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
+      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+    done
+    echo_info "[$(tput setaf 3; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
   fi
 }
 
 function echo_error() {
-  echo "$@" >&2
+  local _BREADCRUMB=$(basename ${SCRIPT_NAME})
+  for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
+    _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+  done
+  echo_info "[$(tput setaf 1; tput bold) ERROR: ${_BREADCRUMB} $(tput sgr 0)] $@" >&2
 }
 
 function rawurlencode() {
@@ -240,7 +263,7 @@ function check_requirements() {
   command_exists hxselect || MISSING="${MISSING}$(echo '  hxnormalize and hxselect (packaged in html-xml-utils)')"
 
   if [[ -n "${MISSING}" ]]; then
-    echo_error "ERROR: Script requires the following commands which are not installed."
+    echo_error "Script requires the following commands which are not installed."
     echo_error "${MISSING}"
     echo_error "Aborting."
 
@@ -301,12 +324,64 @@ install_aur() {
   sudo pacman -S $@
 }
 
+function url2domain() {
+  _URL=${1:-}
+  echo_debug "_URL=${_URL}"
+
+  local DOMAIN=$(echo "${_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+  echo_debug "DOMAIN=${DOMAIN}"
+
+  echo "${DOMAIN}"
+  unset _URL DOMAIN
+}
+
+function domain2publisher() {
+  _URL=$1
+
+  echo_debug "_URL=${_URL}"
+
+  case "$(url2domain "${_URL}")" in
+    www.americatestkitchen.com)
+      PUBLISHER="America's Test Kitchen"
+      ;;
+    www.cookscountry.com)
+      PUBLISHER="Cook's Country"
+      ;;
+    www.cooksillustrated.com)
+      PUBLISHER="Cook's Illustrated"
+      ;;
+    www.epicurious.com)
+      PUBLISHER="Epicurious"
+      ;;
+    www.bonappetit.com)
+      PUBLISHER="Bon Appétit"
+      ;;
+    www.foodnetwork.com)
+      PUBLISHER="Food Network"
+      ;;
+    cooking.nytimes.com)
+      PUBLISHER="New York Times"
+      ;;
+    www.food.com)
+      PUBLISHER="Food.com"
+      ;;
+    * )
+      PUBLISHER=""
+  esac
+
+  echo "${PUBLISHER}"
+}
 
 function authorize_ci() {
+  echo_debug "Authorizing Cooks Illustrated..."
   _COOKIE_FILE=$1
   _AUTH_DOMAIN=$2
 
   local NEXT_PAGE="$(rawurlencode $3)"
+
+  echo_debug "   _COOKIE_FILE=${_COOKIE_FILE}"
+  echo_debug "   _AUTH_DOMAIN=${_AUTH_DOMAIN}"
+  echo_debug "   NEXT_PAGE=${3}"
 
   echo_info "   Get authorization from ${_AUTH_DOMAIN}..."
 
@@ -341,8 +416,13 @@ function authorize_ci() {
 }
 
 function get_ci_page () {
+  echo_debug "Retriving Cooks Illustrated"
+
   _URL=$1
   _HTML_FILE=$2
+
+  echo_debug "   _URL=${_URL}"
+  echo_debug "   _HTML_FILE=${_HTML_FILE}"
 
   local SCRIPT_PATH="`dirname \"${0}\"`"              # relative
   local SCRIPT_PATH="`( cd \"${SCRIPT_PATH}\" && pwd )`"  # absolutized and normalized
@@ -352,7 +432,7 @@ function get_ci_page () {
     SCRIPT_PATH="."
   fi
 
-  local DOMAIN=$(echo "${_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+  local DOMAIN=$(url2domain "${_URL}")
   local COOKIE_FILE="${SCRIPT_PATH}/.${DOMAIN}.cookies"
 
   echo_info "   Using Cookie file: ${COOKIE_FILE}"
@@ -364,31 +444,32 @@ function get_ci_page () {
 }
 
 function ci2json() {
+  echo_debug "Building JSON from Cooks Illustrated Page..."
   _URL=$1
+  echo_debug "   _URL=${_URL}"
 
-  local TMP_RECIPE_HTML_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.html.XXXXXX)"
+  local TMP_SOURCE_HTML_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.html.XXXXXX)"
   local TMP_RECIPE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.json.XXXXXX)"
   local TMP_SOURCE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_data.json.XXXXXX)"
 
-  get_ci_page ${_URL} ${TMP_RECIPE_HTML_FILE}
-  cat "${TMP_RECIPE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
+  get_ci_page ${_URL} ${TMP_SOURCE_HTML_FILE}
+  cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
 
   if [[ $? -ne 0 ]]; then
     if [[ ${FLAG_AUTHORIZE} -eq 0 ]]; then
-      DOMAIN=$(echo "${_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+      DOMAIN=$(url2domain "${_URL}")
       COOKIE_FILE="${SCRIPT_PATH}/.${DOMAIN}.cookies"
       authorize_ci "${COOKIE_FILE}" "${DOMAIN}" "${_URL}"
-      get_ci_page ${_URL} ${TMP_RECIPE_HTML_FILE}
-      cat "${TMP_RECIPE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
+      get_ci_page ${_URL} ${TMP_SOURCE_HTML_FILE}
+      cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
       [[ $? -ne 0 ]] && echo_error "   ERROR: Problem reading source." ; exit ${EX_NOINPUT}
     else
       FLAG_AUTHORIZE=0
-      get_ci_page ${_URL} ${TMP_RECIPE_HTML_FILE}
-      cat "${TMP_RECIPE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
+      get_ci_page ${_URL} ${TMP_SOURCE_HTML_FILE}
+      cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c 'script#__NEXT_DATA__' > ${TMP_SOURCE_JSON_FILE} 2>/dev/null
       [[ $? -ne 0 ]] && echo_error "   ERROR: Problem reading source." ; exit ${EX_NOINPUT}
     fi
   fi
-  rm "${TMP_RECIPE_HTML_FILE}"
 
   echo "{" > "${TMP_RECIPE_JSON_FILE}"
 
@@ -407,18 +488,7 @@ function ci2json() {
 
   local AUTHOR=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .props.initialState.content.documents | jq --raw-output .[].metaData.fields.source)
   if [[ ${AUTHOR} == null ]]; then
-    local DOMAIN=$(echo "${_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
-    case "${DOMAIN}" in
-      www.americatestkitchen.com)
-        AUTHOR="America's Test Kitchen"
-        ;;
-      www.cookscountry.com)
-        AUTHOR="Cook's Country"
-        ;;
-      * )
-        AUTHOR="Cook's Illustrated"
-    esac
-    unset DOMAIN
+    AUTHOR="$(domain2publisher "${URL}")"
   fi
   echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
@@ -474,13 +544,17 @@ function ci2json() {
     IFS
 
   # Directions
-  echo "  \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"direction_groups\": [" >> "${TMP_RECIPE_JSON_FILE}"
   IFS=$'\n'
+  echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
   local direction_count=0
   for direction in $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\r/ /g' | sed 's/\\n/ /g' | jq --raw-output .props.initialState.content.documents | jq --raw-output .[].instructions[].fields.content); do
     ((direction_count++))
     echo "    $([[ $direction_count -gt 1 ]] && echo ', ')\"$(echo ${direction} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
   done
+  echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
   echo "  ]," >> "${TMP_RECIPE_JSON_FILE}"
   unset \
     direction \
@@ -490,20 +564,36 @@ function ci2json() {
   local NOTES=""
   local NOTE_EXTRACT="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.props.initialState.content.documents' | jq -c '.[].headnote')"
   if [[ ${NOTE_EXTRACT} != null ]]; then
-    NOTES="$(echo ${NOTE_EXTRACT} | sed 's/\\r//g' | sed 's/\\n/ /g' | sed 's/<[^>]*>//g' | sed 's/^\"\(.*\)\"$/\1/g' | sed 's/\"/\\\"/g')" >> "${TMP_RECIPE_JSON_FILE}"
-  fi # | sed 's/^\\\"//g'
+    NOTES="$(echo ${NOTE_EXTRACT} \
+      | sed 's/\\r//g' \
+      | sed 's/\\n/ /g' \
+      | sed 's/<[^>]*>//g' \
+      | sed 's/^"\(.*\)"$/\1/g' \
+      | sed 's/"/\\"/g')"
+  fi
   echo "  \"notes\": \"${NOTES}\"" >> "${TMP_RECIPE_JSON_FILE}"
   unset NOTES
 
   echo "}" >> "${TMP_RECIPE_JSON_FILE}"
 
-  rm "${TMP_SOURCE_JSON_FILE}"
+  cat "${TMP_RECIPE_JSON_FILE}" | jq --raw-output
 
-  cat "${TMP_RECIPE_JSON_FILE}" | jq --raw-output && rm "${TMP_RECIPE_JSON_FILE}"
+  if [[ $FLAG_DEBUG -eq 1 ]]; then
+    echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
+    echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
+    echo_debug "RECIPE_JSON_FILE    =${TMP_RECIPE_JSON_FILE}"
+  else
+    rm "${TMP_SOURCE_HTML_FILE}"
+    rm "${TMP_SOURCE_JSON_FILE}"
+    rm "${TMP_RECIPE_JSON_FILE}"
+  fi
+
 }
 
 function epicurious2json() {
+  echo_debug "Building JSON from Epicurious Page..."
   _URL=$1
+  echo_debug "   _URL=${_URL}"
 
   local TMP_RECIPE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.json.XXXXXX)"
   local TMP_SOURCE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_data.json.XXXXXX)"
@@ -672,7 +762,9 @@ function epicurious2json() {
 }
 
 function generic2json() {
+  echo_debug "Building JSON from Generic Page..."
   _URL=$1
+  echo_debug "   _URL=${_URL}"
 
   local TMP_RECIPE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.json.XXXXXX)"
   local TMP_SOURCE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_data.json.XXXXXX)"
@@ -682,8 +774,9 @@ function generic2json() {
   curl --compressed --silent $_URL > ${TMP_SOURCE_HTML_FILE}
 
   if grep --silent "<script[^>]*type=.application\/ld+json.[^>]*>" "${TMP_SOURCE_HTML_FILE}"; then
+    echo_debug "Attempting to retrieve raw JSON using method 1"
     cat ${TMP_SOURCE_HTML_FILE} \
-      | hxnormalize -x \
+      | hxnormalize -x 2>/dev/null \
       | hxselect -i -c "script.yoast-schema-graph" \
       | sed 's/^[^\{]*//' \
       > ${TMP_SOURCE_JSON_RAW_FILE}
@@ -691,6 +784,7 @@ function generic2json() {
     recipetest="$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq -c 'paths | select(.[-1] == "recipeIngredient")')"
 
     if [[ -z "${recipetest}" ]] || [[ ${recipetest} == null ]]; then
+      echo_debug "Retrieve raw JSON using method 2"
       cat ${TMP_SOURCE_HTML_FILE} \
         | tr -d '\n' \
         | sed 's/.*<script[^>]*type=.application\/ld+json.[^>]*>//g' \
@@ -699,14 +793,21 @@ function generic2json() {
         > ${TMP_SOURCE_JSON_RAW_FILE}
     fi
 
-    echo $( \
-      cat "${TMP_SOURCE_JSON_RAW_FILE}" \
-        | jq --raw-output '.[]  | select(."@type" == "Recipe")' 2>/dev/null \
-      || cat "${TMP_SOURCE_JSON_RAW_FILE}" \
-        | jq --raw-output '."@graph"[]  | select(."@type" == "Recipe")' 2>/dev/null \
-      || cat "${TMP_SOURCE_JSON_RAW_FILE}" \
-        | jq --raw-output 2>/dev/null \
-      ) > ${TMP_SOURCE_JSON_FILE}
+    cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '.[]  | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+    ret_code=$?
+    if [ ${ret_code} -gt 0 ]; then
+      cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '. | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+      ret_code=$?
+      if [ ${ret_code} -gt 0 ]; then
+        cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '."@graph"[]  | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+        ret_code=$?
+        if [ ${ret_code} -gt 0 ]; then
+          cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+        fi
+      else
+        cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+      fi
+    fi
 
     echo "{" > "${TMP_RECIPE_JSON_FILE}"
 
@@ -752,10 +853,10 @@ function generic2json() {
 
     local PUBLISHER=$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output '.publisher.name'  2>/dev/null | sed 's/\"/\\\"/g')
     if [[ -z "${PUBLISHER}" ]] || [[ ${PUBLISHER} == null ]]; then
-      PUBLISHER=$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq '."@graph"[]? | select(."@type" == "Organization")? | .name?' 2>/dev/null | sed 's/\"//g')
+      PUBLISHER=$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq '."@graph"[]? | select(."@type" == "Organization")? | .name?' 2>/dev/null | sed 's/\"//g' )
     fi
     if [[ -z "${PUBLISHER}" ]] || [[ ${PUBLISHER} == null ]]; then
-      PUBLISHER=""
+      PUBLISHER="$(domain2publisher ${_URL})"
     fi
     local AUTHOR="$(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .author[].name 2>/dev/null | sed 's/\"/\\\"/g')"
     if [[ -z "${AUTHOR}" ]] || [[  ${AUTHOR} == null ]]; then
@@ -781,7 +882,7 @@ function generic2json() {
     local i_count=0
     for ingredient in $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .recipeIngredient[]); do
       ((i_count++))
-      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' | sed 's/\ \ */ /g' | sed 's/\ *$//g')\"" >> "${TMP_RECIPE_JSON_FILE}"
     done
     unset ingredient
     unset i_count
@@ -867,7 +968,9 @@ function generic2json() {
 }
 
 function recipe_json2rst() {
+  echo_debug "Building reStructuredText from recipe JSON..."
   _JSON_FILE=$1
+  echo_debug "   _JSON_FILE=${_JSON_FILE}"
 
   local TITLE=$(cat ${_JSON_FILE} | jq --raw-output .title)
   echo "$TITLE"
@@ -892,8 +995,7 @@ function recipe_json2rst() {
   fi
 
   local AUTHOR="$(cat ${_JSON_FILE} | jq --raw-output .author)"
-  local SOURCE=$(echo "Source: '${AUTHOR} <${_URL}>'__" | sed "s/\'/\`/g")
-  echo "$SOURCE"
+  echo "Source: \`${AUTHOR} <${_URL}>\`__"
   echo ""
 
   local DESCRIPTION=$(cat ${_JSON_FILE} | jq --raw-output .description)
@@ -997,8 +1099,11 @@ function recipe_json2rst() {
 }
 
 function recipe_json2md() {
-  _JSON_FILE=${1}
+  echo_debug "Building Markdown from recipe JSON..."
+  _JSON_FILE=$1
   _HEADING_PREFIX=${2:-}
+  echo_debug "   _JSON_FILE=${_JSON_FILE}"
+  echo_debug "   _HEADING_PREFIX=${_HEADING_PREFIX}"
 
   local TITLE=$(cat ${_JSON_FILE} | jq --raw-output .title)
   echo "${_HEADING_PREFIX}# ${TITLE}"
@@ -1162,6 +1267,9 @@ function recipe_output_file() {
 }
 
 function recipe_output() {
+  echo_debug "recipe_output()..."
+  _JSON_FILE=$1
+  echo_debug "   _JSON_FILE=${_JSON_FILE}"
   _JSON_FILE=$1
 
   TITLE="$(cat ${_JSON_FILE} | jq --raw-output .title)"
@@ -1189,7 +1297,8 @@ function main() {
       echo_info "Processsing ${URL}..."
 
       # Branch based on domain
-      DOMAIN=$(echo "${URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+      DOMAIN=$(url2domain "${URL}")
+      echo_debug "Branching based on domain (${DOMAIN})..."
       case "${DOMAIN}" in
         www.cooksillustrated.com|www.cookscountry.com|www.americatestkitchen.com)
           ci2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
