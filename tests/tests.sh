@@ -15,9 +15,6 @@ FLAG_SILENT=0
 FLAG_LOADTESTS=0
 FLAG_APPENDTESTS=0
 
-PRINT_WIDTH=100
-
-
 EX_OK=0            # successful termination
 EX_USAGE=64        # command line usage error
 EX_NOINPUT=66      # cannot open input
@@ -39,6 +36,10 @@ fi
 REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
 DEFAULT_TESTS_FILE="$SCRIPT_PATH/recipe-dl.tests"
 DEFAULT_FAILURE_LOG_FILE="${SCRIPT_PATH}/test.failures.log"
+
+COUNT_PASS=0
+COUNT_FAIL=0
+COUNT_SKIP=0
 
 function usage {
   echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>] [-t <URL> <ReferenceFile>] ..."
@@ -166,17 +167,6 @@ function check_requirements() {
     echo_error "${MISSING}"
     echo_error "Aborting."
 
-    #TODO: Rather than Abort and exit, give option to install missing packages.
-    # - For Debian, Ubuntu and Raspbian it will install the latest deb package.
-    # - For Fedora, CentOS, RHEL and openSUSE it will install the latest rpm package.
-    # - For Arch Linux it will install the AUR package.
-    # - For any unrecognized Linux operating system it will install the latest standalone
-    #   release into ~/.local
-    #
-    # - For macOS it will install the Homebrew package.
-    #   - If Homebrew is not installed it will install the latest standalone release
-    #     into ~/.local
-
     exit ${EX_OSFILE}
   fi
 }
@@ -208,15 +198,14 @@ function option_from_file() {
 function load_tests() {
   local _TESTS_FILE=${1:-}
 
-  echo_debug "Read in test parameteres."
   if [ -s "${_TESTS_FILE}" ]; then
-    echo_debug "Reading from file: ${_TESTS_FILE}"
+    echo_info "Loading tests from file: ${_TESTS_FILE}"
     TESTS=()
     IFS=
     while read -r TEST_LINE; do
       TEST_LINE="$(echo "${TEST_LINE}" | sed 's/\#.*$//g' | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g')"
       if [[ "${TEST_LINE}" != "" ]] ; then
-        echo_debug "Adding Test: ${TEST_LINE}"
+        #echo_debug "Adding Test: \"${TEST_LINE}\"" #NOt sure why this is not working but is being added to the file 'not a tty'
         TESTS+=("${TEST_LINE}")
       fi
     done < "${_TESTS_FILE}"
@@ -251,11 +240,27 @@ function log_failure() {
   echo_debug "  Params: _TMP_OUTPUT_FILE=${_TMP_OUTPUT_FILE}"
 
   echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
-  echo "The file \"${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}\" is different from output for \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
+  echo "Reference File: \"${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}\"" >> "${FAILURE_LOG_FILE}"
+  echo "URL: \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
+  echo "" >> "${FAILURE_LOG_FILE}"
   echo "diff output below" >> "${FAILURE_LOG_FILE}"
   echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
   diff --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${_TMP_OUTPUT_FILE}" >> "${FAILURE_LOG_FILE}"
   echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
+}
+
+function reset_references {
+  # Lopp through the tests
+  for TEST in "${TESTS[@]}"; do
+    local URL=$(cut -d'|' -f1 <<< "${TEST}")
+    local REFERENCE_FILE=$(cut -d'|' -f2 <<< "${TEST}")
+
+    local OPTION=$(option_from_file "${REFERENCE_FILE}")
+    echo_info "  Resetting ${REFERENCE_FILE}"
+    ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${REFERENCE_FILE}" "${URL}" > /dev/null
+    unset URL REFERENCE_FILE OPTION
+  done
+  unset TEST
 }
 
 function run_test() {
@@ -271,6 +276,8 @@ function run_test() {
   echo_debug "Value: OPTION=${OPTION}"
   echo_debug "Value: TMP_OUTPUT_FILE=${TMP_OUTPUT_FILE}"
 
+  local PRINT_WIDTH=$(tput cols)
+  ((PRINT_WIDTH-=10))
   local PRINT_PARAM_WIDTH=$(($PRINT_WIDTH-13))
   local PRINT_OPTIONS=""
   PRINT_OPTIONS=$([ "${OPTION}" != "" ] && [ "${OPTION}" != " " ] && echo " (${OPTION})")
@@ -290,48 +297,47 @@ function run_test() {
     ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${TMP_OUTPUT_FILE}" "${_URL}" > /dev/null
 
     local TMP_OUTPUT_FILE_EXT="$(set -- $TMP_OUTPUT_FILE.*; echo "$1")"
-    echo_debug "Actual File $TMP_OUTPUT_FILE_EXT"
+    echo_debug "Comapre File: \"$TMP_OUTPUT_FILE_EXT\""
 
     if diff --brief --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}" >/dev/null ; then
+      ((COUNT_PASS++))
       echo "[$(tput setaf 2; tput bold)PASS$(tput sgr 0)]"
     else
+      ((COUNT_FAIL++))
       echo "[$(tput setaf 1; tput bold)FAIL$(tput sgr 0)] see log"
       log_failure "${OPTION}" "${_URL}" "${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}"
     fi
     rm "${TMP_OUTPUT_FILE_EXT}" 2>/dev/null
   else
+    ((COUNT_SKIP++))
     echo "[$(tput setaf 3; tput bold)MISSING$(tput sgr 0)]"
     ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${_URL}" > /dev/null
   fi
 }
 
-function reset_references {
-  # Lopp through the tests
-  for TEST in "${TESTS[@]}"; do
-    local URL=$(cut -d'|' -f1 <<< "${TEST}")
-    local REFERENCE_FILE=$(cut -d'|' -f2 <<< "${TEST}")
-
-    local OPTION=$(option_from_file "${REFERENCE_FILE}")
-    echo_info "  Resetting ${REFERENCE_FILE}"
-    ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${REFERENCE_FILE}" "${URL}" > /dev/null
-    unset URL REFERENCE_FILE OPTION
-  done
-  unset TEST
-}
-
 function run_tests() {
+  echo_info "Running Tests..."
   if [ $FLAG_APPEND_LOG -eq 0 ] && [ ! -s $FLAG_APPEND_LOG ]; then
+    echo_info "   Failues will be logged to $FAILURE_LOG_FILE"
     rm "$FAILURE_LOG_FILE" 2>/dev/null
+  else
+    echo_info "   Failues will be appended to $FAILURE_LOG_FILE"
   fi
+
+  COUNT_PASS=0
+  COUNT_FAIL=0
+  COUNT_SKIP=0
+
   # Loop through the tests
   for TEST in "${TESTS[@]}"; do
     local URL=$(cut -d'|' -f1 <<< "${TEST}")
     local REFERENCE_FILE=$(cut -d'|' -f2 <<< "${TEST}")
-
     run_test "${URL}" "${REFERENCE_FILE}"
     unset URL REFERENCE_FILE
   done
   unset TEST
+  echo_info ""
+  echo_info "Results: ${COUNT_PASS} Passed  ${COUNT_FAIL} Failed  ${COUNT_SKIP} Skipped  "
 }
 
 check_requirements
