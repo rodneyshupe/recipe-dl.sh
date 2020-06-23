@@ -101,7 +101,17 @@ function echo_debug() {
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
     done
-    echo_info "[$(tput setaf 3; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[$(tput setaf 4; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+  fi
+}
+
+function echo_warning() {
+  if [[ $FLAG_SILENT -eq 0 ]]; then
+    local _BREADCRUMB=$(basename ${SCRIPT_NAME})
+    for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
+      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+    done
+    echo_info "[$(tput setaf 3; tput bold) WARNING: ${_BREADCRUMB} $(tput sgr 0)] $@"
   fi
 }
 

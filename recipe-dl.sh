@@ -12,8 +12,8 @@ set -u
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
 
 # TODO: Site to add:
-# * https:///www.saveur.com  - Example: https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
-# cat /tmp/generic2json.html.7QdarE | hxnormalize -x | tr -d '\r' | tr -d '\n' | hxselect -i -c 'li.instruction' | sed -e's/  */ /g'
+# * https:///www.saveur.com  - Example:
+#   ./recipe-dl.sh https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
 
 # Set temp files
 TEMP_RECIPE_JSON_FILE="/tmp/recipe.json"
@@ -173,7 +173,17 @@ function echo_debug() {
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
     done
-    echo_info "[$(tput setaf 3; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[$(tput setaf 4; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+  fi
+}
+
+function echo_warning() {
+  if [[ $FLAG_SILENT -eq 0 ]]; then
+    local _BREADCRUMB=$(basename ${SCRIPT_NAME})
+    for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
+      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+    done
+    echo_info "[$(tput setaf 3; tput bold) WARNING: ${_BREADCRUMB} $(tput sgr 0)] $@"
   fi
 }
 
@@ -303,14 +313,14 @@ function install_macos() {
   echo_error "Aborting."
 }
 
-install_deb() {
+function install_deb() {
   echo_info "Installing $@..."
   echo_info
 
   sudo_sh_c apt-get install -y $@
 }
 
-install_rpm() {
+function install_rpm() {
   echo_info "Installing $@..."
   echo_info
 
@@ -318,7 +328,7 @@ install_rpm() {
   sudo zypper install $@ #openSUSE
 }
 
-install_aur() {
+function install_aur() {
   echo_info "Installing $@..."
   echo_info
   sudo pacman -S $@
@@ -364,6 +374,9 @@ function domain2publisher() {
       ;;
     www.food.com)
       PUBLISHER="Food.com"
+      ;;
+    www.saveur.com)
+      PUBLISHER="Saveur"
       ;;
     * )
       PUBLISHER=""
@@ -576,7 +589,7 @@ function ci2json() {
 
   echo "}" >> "${TMP_RECIPE_JSON_FILE}"
 
-  cat "${TMP_RECIPE_JSON_FILE}" | jq --raw-output
+  cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
 
   if [[ $FLAG_DEBUG -eq 1 ]]; then
     echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
@@ -588,6 +601,89 @@ function ci2json() {
     rm "${TMP_RECIPE_JSON_FILE}"
   fi
 
+}
+
+function saveur2json() {
+  echo_debug "Building JSON from Saveur Page..."
+  _URL=$1
+  echo_debug "   _URL=${_URL}"
+
+  local TMP_RECIPE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_recipe.json.XXXXXX)"
+  local TMP_SOURCE_JSON_FILE="$(mktemp /tmp/${FUNCNAME[0]}_data.json.XXXXXX)"
+  local TMP_SOURCE_JSON_RAW_FILE="$(mktemp /tmp/${FUNCNAME[0]}_raw.json.XXXXXX)"
+  local TMP_SOURCE_HTML_FILE="$(mktemp /tmp/${FUNCNAME[0]}.html.XXXXXX)"
+
+  curl --compressed --silent $_URL | hxnormalize -x | tr -d '\r' | tr -d '\n' > ${TMP_SOURCE_HTML_FILE}
+
+  cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
+
+  echo "{" > "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"url\": \"$_URL\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  TITLE="$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -c '.article_title' | sed 's/  */ /g')"
+  DESCRIPTION=""
+  YIELD=""
+
+  echo "  \"title\": \"$TITLE\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"preptime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"cooktime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"totaltime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  AUTHOR="$(domain2publisher "$_URL")"
+  echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
+
+  # Ingredient Groups and ingredients
+  echo "  \"ingredient_groups\": [{" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"title\":\"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  IFS=$'\n'
+  local i_count=0
+  for ingredient in $(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c -s '\n' 'li.ingredient' | sed -e's/  */ /g'); do
+    ((i_count++))
+    echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' | sed 's/  */ /g' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+  done
+  unset ingredient
+  unset i_count
+  unset IFS
+  echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"direction_groups\": [{" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"group\":\"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "    \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
+  IFS=$'\n'
+  local i_count=0
+  for ingredient in $(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c -s '\n' 'li.instruction' | sed -e's/  */ /g'); do
+    ((i_count++))
+    echo "        $([[ $i_count -gt 1 ]] && echo ', ')\"$(echo ${ingredient} | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | tr -d '\r' | tr '\n' ' ' | sed 's/((/(/g' | sed 's/))/)/g' | sed 's/  */ /g' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+  done
+  unset ingredient
+  unset i_count
+  unset IFS
+  echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "  \"notes\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+
+  echo "}" >> "${TMP_RECIPE_JSON_FILE}"
+
+  cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
+
+  if [[ $FLAG_DEBUG -eq 1 ]]; then
+    echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
+    echo_debug "SOURCE_JSON_RAW_FILE=${TMP_SOURCE_JSON_RAW_FILE}"
+    echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
+    echo_debug "RECIPE_JSON_FILE    =${TMP_RECIPE_JSON_FILE}"
+  else
+    rm "${TMP_SOURCE_HTML_FILE}"
+    rm "${TMP_SOURCE_JSON_RAW_FILE}"
+    rm "${TMP_SOURCE_JSON_FILE}"
+    rm "${TMP_RECIPE_JSON_FILE}"
+  fi
 }
 
 function epicurious2json() {
@@ -1309,6 +1405,10 @@ function main() {
           ;;
         www.epicurious.com)
           epicurious2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
+          ;;
+        www.saveur.com)
+          echo_warning "Saveur support is not complete."
+          saveur2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
         #cooking.nytimes.com|www.bonappetit.com)
         #www.foodnetwork.com|www.cookingchanneltv.com)
