@@ -6,5 +6,5 @@ You can also reset all reference files with the `--reset-references` argument on
 the test script.
 
 ```sh
-./test.sh --reset-references
+./tests.sh --reset-references
 ```
