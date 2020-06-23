@@ -6,10 +6,15 @@ set -u
 #Format for the below would be "Options|URL|ReferenceFile
 TESTS=("https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293|ChickenWingswithHoneyandSoySauce.rst"  \
        "https://www.bonappetit.com/recipe/instant-pot-split-pea-soup|InstantPotSplitPeaSoup.rst"  \
+       "https://www.bonappetit.com/recipe/instant-pot-glazed-and-grilled-ribs|InstantPotGlazedandGrilledRibs.json" \
        "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
        "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
+       "https://www.thechunkychef.com/easy-slow-cooker-mongolian-beef-recipe/|SlowCookerMongolianBeefRecipe.md" \
+       "https://minimalistbaker.com/spicy-red-lentil-curry/|SpicyRedLentilCurry.rst" \
        "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
        "https://www.delish.com/cooking/recipe-ideas/recipes/a57660/instant-pot-mac-cheese-recipe/|InstantPotMacandCheese.json" \
+       "https://www.cookingchanneltv.com/recipes/alton-brown/fondue-finally-reloaded-5496018|FondueFinallyReloaded.rst" \
+       "https://www.finecooking.com/recipe/herbed-grill-roasted-lamb|HerbedGrillRoastedLamb.rst" \
        "https://www.food.com/recipe/annette-funicellos-peanut-butter-pork-12871|AnnetteFunicellosPeanutButterPork.rst" )
 
 FLAG_DEBUG=0
@@ -205,7 +210,6 @@ function run_test() {
     fi
   fi
   printf 'Test: %-'$PRINT_PARAM_WIDTH's ' "${PRINT_URL}"
-
 
   if [ -s "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" ]; then
     ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${TMP_OUTPUT_FILE}" "${_URL}" > /dev/null

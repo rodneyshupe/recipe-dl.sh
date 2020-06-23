@@ -793,19 +793,21 @@ function generic2json() {
         > ${TMP_SOURCE_JSON_RAW_FILE}
     fi
 
+    echo_debug "Selecting Recipe JSON (Attempting Method 1: '.[]  | select(.\"@type\" == \"Recipe\")')"
     cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '.[]  | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
     ret_code=$?
-    if [ ${ret_code} -gt 0 ]; then
-      cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '. | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+    if [ ${ret_code} -gt 0 ] || [ ! -s "${TMP_SOURCE_JSON_FILE}" ]; then
+      echo_debug "Selecting Recipe JSON (Attempting Method 2: '.\"@graph\"[]  | select(.\"@type\" == \"Recipe\")')"
+      cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '."@graph"[]  | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
       ret_code=$?
-      if [ ${ret_code} -gt 0 ]; then
-        cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '."@graph"[]  | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
+      if [ ${ret_code} -gt 0 ] || [ ! -s "${TMP_SOURCE_JSON_FILE}" ]; then
+        echo_debug "Selecting Recipe JSON (Attempting Method 3: '. | select(.\"@type\" == \"Recipe\")')"
+        cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output '. | select(."@type" == "Recipe")' 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
         ret_code=$?
-        if [ ${ret_code} -gt 0 ]; then
+        if [ ${ret_code} -gt 0 ] || [ ! -s "${TMP_SOURCE_JSON_FILE}" ]; then
+          echo_debug "Copying over JSON (Attempting Method 4)"
           cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
         fi
-      else
-        cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq --raw-output 2>/dev/null > ${TMP_SOURCE_JSON_FILE}
       fi
     fi
 
