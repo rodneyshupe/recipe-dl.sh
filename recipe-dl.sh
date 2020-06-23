@@ -622,15 +622,14 @@ function saveur2json() {
   echo "  \"url\": \"$_URL\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   TITLE="$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -c '.article_title' | sed 's/  */ /g')"
-  DESCRIPTION=""
-  YIELD=""
-
+  DESCRIPTION="$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect p.paragraph | sed 's/  */ /g' | hxselect -c p:first-child)"
+  YIELD="$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c 'div.yield span' | sed 's/  */ /g')"
   echo "  \"title\": \"$TITLE\"," >> "${TMP_RECIPE_JSON_FILE}"
   echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
   echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   echo "  \"preptime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
-  echo "  \"cooktime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  \"cooktime\": \"$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c div.cook-time 'meta::attr(content)')\"," >> "${TMP_RECIPE_JSON_FILE}"
   echo "  \"totaltime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   AUTHOR="$(domain2publisher "$_URL")"
@@ -638,6 +637,8 @@ function saveur2json() {
 
   # Ingredient Groups and ingredients
   echo "  \"ingredient_groups\": [{" >> "${TMP_RECIPE_JSON_FILE}"
+  # TODO: Figure out how to do grouping:
+  #       Query: cat "${TMP_SOURCE_HTML_FILE}" | hxselect div.recipe | sed 's/  */ /g' | hxselect -i -c h2.part-title,ul
   echo "    \"title\":\"\"," >> "${TMP_RECIPE_JSON_FILE}"
   echo "    \"ingredients\": [" >> "${TMP_RECIPE_JSON_FILE}"
   IFS=$'\n'
@@ -665,9 +666,9 @@ function saveur2json() {
   unset i_count
   unset IFS
   echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
-  echo "  }]," >> "${TMP_RECIPE_JSON_FILE}"
+  echo "  }]" >> "${TMP_RECIPE_JSON_FILE}"
 
-  echo "  \"notes\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
+  #echo "  ,\"notes\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
 
   echo "}" >> "${TMP_RECIPE_JSON_FILE}"
 
@@ -1407,7 +1408,6 @@ function main() {
           epicurious2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
         www.saveur.com)
-          echo_warning "Saveur support is not complete."
           saveur2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
         #cooking.nytimes.com|www.bonappetit.com)

@@ -9,6 +9,8 @@ TESTS=("https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sau
        "https://www.bonappetit.com/recipe/instant-pot-glazed-and-grilled-ribs|InstantPotGlazedandGrilledRibs.json" \
        "https://www.cooksillustrated.com/recipes/8800-sticky-buns|StickyBuns.rst" \
        "https://www.epicurious.com/recipes/food/views/instant-pot-macaroni-and-cheese|InstantPotMacaroniandCheese.md" \
+       "https://www.saveur.com/perfect-brown-rice-recipe/|PerfectBrownRice.rst" \
+       "https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/|LambRibsWithSpicyHarissaBarbecueSauceRecipe.json"
        "https://www.thechunkychef.com/easy-slow-cooker-mongolian-beef-recipe/|SlowCookerMongolianBeefRecipe.md" \
        "https://minimalistbaker.com/spicy-red-lentil-curry/|SpicyRedLentilCurry.rst" \
        "https://cooking.nytimes.com/recipes/1014366-chana-dal-new-delhi-style|ChanaDalNewDelhiStyle.rst" \
