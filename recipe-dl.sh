@@ -615,9 +615,27 @@ function saveur2json() {
   echo "  \"description\": \"${DESCRIPTION}\"," >> "${TMP_RECIPE_JSON_FILE}"
   echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
-  echo "  \"preptime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
-  echo "  \"cooktime\": \"$(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c div.cook-time 'meta::attr(content)')\"," >> "${TMP_RECIPE_JSON_FILE}"
-  echo "  \"totaltime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  # Parse Time
+  PREP_MINUTES=0
+  COOK_MINUTES=$(( $(rawtime2minutes $(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c div.cook-time 'meta::attr(content)')) ))
+  TOTAL_MINUTES=$(( ${PREP_MINUTES} + ${COOK_MINUTES} ))
+  if [[ $PREP_MINUTES -eq 0 ]] && [[ $TOTAL_MINUTES -gt 0 ]] && [[ $COOK_MINUTES -gt 0 ]]; then
+    PREP_MINUTES=$(( ${TOTAL_MINUTES} - ${COOK_MINUTES} ))
+  fi
+
+  if [[ ${PREP_MINUTES} -gt 0 ]]; then
+    echo "  \"preptime\": \"$(minutes2time ${PREP_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
+  else
+    echo "  \"preptime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  fi
+
+  if [[ ${COOK_MINUTES} -gt 0 ]]; then
+    echo "  \"cooktime\": \"$(minutes2time ${COOK_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
+  else
+    echo "  \"cooktime\": \"\"," >> "${TMP_RECIPE_JSON_FILE}"
+  fi
+
+  echo "  \"totaltime\": \"$(minutes2time ${TOTAL_MINUTES})\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   AUTHOR="$(domain2publisher "$_URL")"
   echo "  \"author\": \"${AUTHOR}\"," >> "${TMP_RECIPE_JSON_FILE}"
@@ -1348,6 +1366,9 @@ function recipe_output_file() {
     cat "${TEMP_OUT_FILE}" > ${SAVE_FILE}
     unset SAVE_FILE
   else
+    echo_info ""
+    echo_info "$(head -c $(tput cols) < /dev/zero | tr '\0' '=')"
+    echo_info ""
     cat "${TEMP_OUT_FILE}"
   fi
 
