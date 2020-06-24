@@ -10,62 +10,49 @@ set -u
 #   ./recipe-dl.sh -s https://www.cooksillustrated.com/recipes/8800-sticky-buns
 #   ./recipe-dl.sh https://cooking.nytimes.com/recipes/1019530-cajun-shrimp-boil
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
-
-# TODO: Site to add:
-# * https:///www.saveur.com  - Example:
 #   ./recipe-dl.sh https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
 
-# Set temp files
-TEMP_RECIPE_JSON_FILE="/tmp/recipe.json"
-SCRIPT_NAME=$0
+# Script Constant
+declare -r SCRIPT_NAME=$0
 
 # EXIT CODES
-EX_OK=0            # successful termination
-EX_USAGE=64        # command line usage error
-EX_DATAERR=65      # data format error
-EX_NOINPUT=66      # cannot open input
-# EX_NOUSER=67       # addressee unknown
-# EX_NOHOST=68       # host name unknown
-# EX_UNAVAILABLE=69  # service unavailable
-EX_SOFTWARE=70     # internal software error
-# EX_OSERR=71        # system error (e.g., can't fork)
-EX_OSFILE=72       # critical OS file missing
-EX_CANTCREAT=73    # can't create (user) output file
-# EX_IOERR=74        # input/output error
-# EX_TEMPFAIL=75     # temp failure; user is invited to retry
-# EX_PROTOCOL=76     # remote error in protocol
-EX_NOPERM=77       # permission denied
-# EX_CONFIG=78       # configuration error
+declare -r -i EX_OK=0            # successful termination
+declare -r -i EX_USAGE=64        # command line usage error
+declare -r -i EX_DATAERR=65      # data format error
+declare -r -i EX_NOINPUT=66      # cannot open input
+# declare -r -i EX_NOUSER=67       # addressee unknown
+# declare -r -i EX_NOHOST=68       # host name unknown
+# declare -r -i EX_UNAVAILABLE=69  # service unavailable
+declare -r -i EX_SOFTWARE=70     # internal software error
+# declare -r -i EX_OSERR=71        # system error (e.g., can't fork)
+declare -r -i EX_OSFILE=72       # critical OS file missing
+declare -r -i EX_CANTCREAT=73    # can't create (user) output file
+# declare -r -i EX_IOERR=74        # input/output error
+# declare -r -i EX_TEMPFAIL=75     # temp failure; user is invited to retry
+# declare -r -i EX_PROTOCOL=76     # remote error in protocol
+declare -r -i EX_NOPERM=77       # permission denied
+# declare -r -i EX_CONFIG=78       # configuration error
 
-unset \
-  FLAG_SAVE_TO_FILE \
-  FLAG_DEBUG \
-  FLAG_SILENT \
-  FLAG_AUTHORIZE \
-  FLAG_OUTPUT_JSON \
-  FLAG_OUTPUT_MD \
-  FLAG_OUTPUT_RST \
-  ARG_IN_FiLE \
-  ARG_OUT_FiLE \
-  ARG_PASSED_URLS
+# Flags
+declare -i FLAG_SAVE_TO_FILE=0
+declare -i FLAG_DEBUG=0
+declare -i FLAG_SILENT=0
+declare -i FLAG_AUTHORIZE=0
+declare -i FLAG_OUTPUT_JSON=0
+declare -i FLAG_OUTPUT_MD=0
+declare -i FLAG_OUTPUT_RST=0
 
-FLAG_SAVE_TO_FILE=0
-FLAG_DEBUG=0
-FLAG_SILENT=0
-FLAG_AUTHORIZE=0
-FLAG_OUTPUT_JSON=0
-FLAG_OUTPUT_MD=0
-FLAG_OUTPUT_RST=0
-ARG_IN_FiLE=""
-ARG_OUT_FiLE=""
-ARG_PASSED_URLS=""
+# Arguments
+declare ARG_IN_FiLE=""
+declare ARG_OUT_FiLE=""
+declare ARG_PASSED_URLS=""
 
 function usage {
   echo "Usage: ${SCRIPT_NAME} [-ahjmros] [-f infile] [-o outfile] <URL> [<URL] ..."
   if [ $# -eq 0 ] || [ -z "$1" ]; then
     echo "  -a|--authorize         Force authorization of Cook Illustrated sites"
-    #echo "  -d|--debug             Add additional Output"
-    #echo "  -q|--quite            Suppress most output aka Silent Mode"
+    echo "  -d|--debug             Add additional Output"
+    echo "  -q|--quite             Suppress most output aka Silent Mode"
     echo "  -h|--help              Display help"
     echo "  -j|--output-json       Output results in JSON format"
     echo "  -m|--output-md         Output results in Markdown format"
@@ -1368,7 +1355,6 @@ function recipe_output_file() {
 }
 
 function recipe_output() {
-  echo_debug "recipe_output()..."
   _JSON_FILE=$1
   echo_debug "   _JSON_FILE=${_JSON_FILE}"
   _JSON_FILE=$1
@@ -1388,6 +1374,7 @@ function recipe_output() {
 }
 
 function main() {
+  local TEMP_RECIPE_JSON_FILE="$(mktemp /tmp/recipe.json.XXXXXX)"
 
   parse_arguments "$@"
 
@@ -1410,8 +1397,6 @@ function main() {
         www.saveur.com)
           saveur2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           ;;
-        #cooking.nytimes.com|www.bonappetit.com)
-        #www.foodnetwork.com|www.cookingchanneltv.com)
         * )
           generic2json "${URL}" > "${TEMP_RECIPE_JSON_FILE}"
           #TODO: Add check for ld+json input.
@@ -1426,7 +1411,10 @@ function main() {
     recipe_output "${ARG_IN_FiLE}"
   fi
 
+  rm "${TEMP_RECIPE_JSON_FILE}" >/dev/null 2>&1
+
   unset \
+    TEMP_RECIPE_JSON_FILE \
     TEMP_RST_FILE \
     URL
 }

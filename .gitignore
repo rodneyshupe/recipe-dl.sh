@@ -13,3 +13,4 @@
 # Files related to tests
 test.output.*
 test.failures.log
+*.tests

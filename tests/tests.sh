@@ -3,43 +3,47 @@ trap 'rc=$?; echo "ERR at line ${LINENO} (rc: $rc)"; exit $rc' ERR
 #trap 'rc=$?; echo "EXIT (rc: $rc)"; exit $rc' EXIT
 set -u
 
-SCRIPT_NAME=$0
+# Script Constant
+declare -r SCRIPT_NAME=$0
 
-TESTS=()
+# Exit Constants
+declare -r -i EX_OK=0            # successful termination
+declare -r -i EX_USAGE=64        # command line usage error
+declare -r -i EX_NOINPUT=66      # cannot open input
+declare -r -i EX_OSFILE=72       # critical OS file missing
+declare -r -i EX_IOERR=74        # input/output error
 
-FAILURE_LOG_FILE=""
+# Flags
+declare -i FLAG_DEBUG=0
+declare -i FLAG_APPEND_LOG=0
+declare -i FLAG_SILENT=0
+declare -i FLAG_LOADTESTS=0
+declare -i FLAG_APPENDTESTS=0
 
-FLAG_DEBUG=0
-FLAG_APPEND_LOG=0
-FLAG_SILENT=0
-FLAG_LOADTESTS=0
-FLAG_APPENDTESTS=0
+# Global Variables
+declare -a TESTS=()
+declare FAILURE_LOG_FILE=""
 
-EX_OK=0            # successful termination
-EX_USAGE=64        # command line usage error
-EX_NOINPUT=66      # cannot open input
-EX_OSFILE=72       # critical OS file missing
-EX_IOERR=74        # input/output error
-
-SCRIPT_PATH=$(dirname $(readlink $0) 2>/dev/null || dirname $0)           # relative
+declare SCRIPT_PATH=$(dirname $(readlink $0) 2>/dev/null || dirname $0)           # relative
 SCRIPT_PATH="`( cd \"${SCRIPT_PATH}\" && pwd )`"  # absolutized and normalized
 if [ -z "${SCRIPT_PATH}" ] ; then
   echo_error "For some reason, the path is not accessible to the script (e.g. permissions re-evaled after suid)"
   exit ${EX_IOERR}  # fail
 fi
 
-PROJECT_PATH="`( cd \"${SCRIPT_PATH}/..\" && pwd )`"  # absolutized and normalized
+declare -r PROJECT_PATH="`( cd \"${SCRIPT_PATH}/..\" && pwd )`"  # absolutized and normalized
 if [ -z "${PROJECT_PATH}" ] ; then
   echo_error "For some reason, the path is not accessible to the script (e.g. permissions re-evaled after suid)"
   exit ${EX_IOERR}  # fail
 fi
-REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
-DEFAULT_TESTS_FILE="$SCRIPT_PATH/recipe-dl.tests"
-DEFAULT_FAILURE_LOG_FILE="${SCRIPT_PATH}/test.failures.log"
 
-COUNT_PASS=0
-COUNT_FAIL=0
-COUNT_SKIP=0
+declare -r REFERENCE_FILE_PATH="${SCRIPT_PATH}/reference-files"
+declare -r DEFAULT_TESTS_FILE="$SCRIPT_PATH/recipe-dl.tests"
+declare -r DEFAULT_FAILURE_LOG_FILE="${SCRIPT_PATH}/test.failures.log"
+
+declare -i COUNT_PASS=0
+declare -i COUNT_FAIL=0
+declare -i COUNT_SKIP=0
 
 function usage {
   echo "Usage: ${SCRIPT_NAME} [-d] [-h] [-r] [-t <URL> <ReferenceFile>] [-t <URL> <ReferenceFile>] ..."
@@ -205,7 +209,7 @@ function load_tests() {
     while read -r TEST_LINE; do
       TEST_LINE="$(echo "${TEST_LINE}" | sed 's/\#.*$//g' | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g')"
       if [[ "${TEST_LINE}" != "" ]] ; then
-        #echo_debug "Adding Test: \"${TEST_LINE}\"" #NOt sure why this is not working but is being added to the file 'not a tty'
+        #echo_debug "Adding Test: \"${TEST_LINE}\"" # Not sure why this is not working but is being added to the file 'not a tty'
         TESTS+=("${TEST_LINE}")
       fi
     done < "${_TESTS_FILE}"
@@ -317,12 +321,14 @@ function run_test() {
 
 function run_tests() {
   echo_info "Running Tests..."
+  echo_info "   Using reference file: ${REFERENCE_FILE_PATH}"
   if [ $FLAG_APPEND_LOG -eq 0 ] && [ ! -s $FLAG_APPEND_LOG ]; then
     echo_info "   Failues will be logged to $FAILURE_LOG_FILE"
     rm "$FAILURE_LOG_FILE" 2>/dev/null
   else
     echo_info "   Failues will be appended to $FAILURE_LOG_FILE"
   fi
+  echo_info ""
 
   COUNT_PASS=0
   COUNT_FAIL=0
