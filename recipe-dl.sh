@@ -12,6 +12,8 @@ set -u
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
 #   ./recipe-dl.sh https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
 
+# TODO: Add support for NewYorker.com
+#       Example: ./recipe-dl.sh https://www.newyorker.com/culture/kitchen-notes/a-masters-twist-on-making-ice-cream-in-a-plastic-bag -d
 # Script Constant
 declare -r SCRIPT_NAME=$0
 
@@ -372,6 +374,9 @@ function domain2publisher() {
       ;;
     www.saveur.com)
       PUBLISHER="Saveur"
+      ;;
+    www.allrecipes.com)
+      PUBLISHER="AllRecipes"
       ;;
     * )
       PUBLISHER=""
@@ -888,7 +893,7 @@ function generic2json() {
     cat ${TMP_SOURCE_HTML_FILE} \
       | hxnormalize -x 2>/dev/null \
       | hxselect -i -c "script.yoast-schema-graph" \
-      | sed 's/^[^\{]*//' \
+      | sed 's/^[^\[\{]*//' \
       > ${TMP_SOURCE_JSON_RAW_FILE}
 
     recipetest="$(cat "${TMP_SOURCE_JSON_RAW_FILE}" | jq -c 'paths | select(.[-1] == "recipeIngredient")')"
@@ -899,7 +904,7 @@ function generic2json() {
         | tr -d '\n' \
         | sed 's/.*<script[^>]*type=.application\/ld+json.[^>]*>//g' \
         | sed 's/<\/script>.*//g' \
-        | sed 's/^[^\{]*//' \
+        | sed 's/^[^\[\{]*//' \
         > ${TMP_SOURCE_JSON_RAW_FILE}
     fi
 
