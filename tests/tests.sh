@@ -238,19 +238,22 @@ function log_failure() {
   local _URL="${2}"
   local _REFERENCE_FILE="${3}"
   local _TMP_OUTPUT_FILE="${4}"
-  echo_debug "  Params: _OPTIONS=${_OPTIONS}"
-  echo_debug "  Params: _URL=${_URL}"
-  echo_debug "  Params: _REFERENCE_FILE=${_REFERENCE_FILE}"
-  echo_debug "  Params: _TMP_OUTPUT_FILE=${_TMP_OUTPUT_FILE}"
 
-  echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
+  local PRINT_WIDTH=80
+  echo "$(head -c $[PRINT_WIDTH] < /dev/zero | tr '\0' '=')" >> "${FAILURE_LOG_FILE}"
   echo "Reference File: \"${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}\"" >> "${FAILURE_LOG_FILE}"
-  echo "URL: \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
+  echo "URL:            \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
+  if [ $FLAG_DEBUG -eq 1 ]; then
+    echo "Option used:    \"${_OPTIONS}\"" >> "${FAILURE_LOG_FILE}"
+    echo "Temp Compare File: ${_TMP_OUTPUT_FILE}" >> "${FAILURE_LOG_FILE}"
+  fi
   echo "" >> "${FAILURE_LOG_FILE}"
-  echo "diff output below" >> "${FAILURE_LOG_FILE}"
-  echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
+  echo "Differences detailed below" >> "${FAILURE_LOG_FILE}"
+  echo "$(head -c $[PRINT_WIDTH] < /dev/zero | tr '\0' '=')" >> "${FAILURE_LOG_FILE}"
+  echo "" >> "${FAILURE_LOG_FILE}"
   diff --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${_TMP_OUTPUT_FILE}" >> "${FAILURE_LOG_FILE}"
-  echo "======================================================================================================" >> "${FAILURE_LOG_FILE}"
+  echo "" >> "${FAILURE_LOG_FILE}"
+  echo "$(head -c $[PRINT_WIDTH] < /dev/zero | tr '\0' '=')" >> "${FAILURE_LOG_FILE}"
 }
 
 function reset_references {
@@ -320,14 +323,17 @@ function run_test() {
 }
 
 function run_tests() {
-  echo_info "Running Tests..."
-  echo_info "   Using reference file: ${REFERENCE_FILE_PATH}"
+  echo_info "Using reference file: ${REFERENCE_FILE_PATH}"
   if [ $FLAG_APPEND_LOG -eq 0 ] && [ ! -s $FLAG_APPEND_LOG ]; then
-    echo_info "   Failues will be logged to $FAILURE_LOG_FILE"
+    echo_info "Failues will be logged to $FAILURE_LOG_FILE"
     rm "$FAILURE_LOG_FILE" 2>/dev/null
   else
-    echo_info "   Failues will be appended to $FAILURE_LOG_FILE"
+    echo_info "Failues will be appended to $FAILURE_LOG_FILE"
   fi
+  echo_info ""
+  echo_info "Running Tests..."
+  echo_info ""
+  echo_info "$(head -c $(tput cols) < /dev/zero | tr '\0' '=')"
   echo_info ""
 
   COUNT_PASS=0
@@ -342,6 +348,8 @@ function run_tests() {
     unset URL REFERENCE_FILE
   done
   unset TEST
+  echo_info ""
+  echo_info "$(head -c $(tput cols) < /dev/zero | tr '\0' '=')"
   echo_info ""
   echo_info "Results: ${COUNT_PASS} Passed  ${COUNT_FAIL} Failed  ${COUNT_SKIP} Skipped  "
 }
