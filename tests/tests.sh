@@ -133,7 +133,7 @@ function echo_info() {
 }
 
 function echo_debug() {
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     local _BREADCRUMB=$(basename ${SCRIPT_NAME})
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
@@ -144,20 +144,28 @@ function echo_debug() {
 
 function echo_warning() {
   if [[ $FLAG_SILENT -eq 0 ]]; then
-    local _BREADCRUMB=$(basename ${SCRIPT_NAME})
-    for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
-      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
-    done
-    echo_info "[$(tput setaf 3; tput bold) WARNING: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    local _BREADCRUMB=""
+    if [[ $FLAG_DEBUG -ne 0 ]]; then
+      _BREADCRUMB=$(basename ${SCRIPT_NAME})
+      for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
+        _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+      done
+      _BREADCRUMB=": ${_BREADCRUMB}"
+    fi
+    echo_info "[$(tput setaf 3; tput bold) WARNING${_BREADCRUMB} $(tput sgr 0)] $@"
   fi
 }
 
 function echo_error() {
-  local _BREADCRUMB=$(basename ${SCRIPT_NAME})
-  for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
-    _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
-  done
-  echo_info "[$(tput setaf 1; tput bold) ERROR: ${_BREADCRUMB} $(tput sgr 0)] $@" >&2
+  local _BREADCRUMB=""
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
+    _BREADCRUMB=$(basename ${SCRIPT_NAME})
+    for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
+      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+    done
+    _BREADCRUMB=": ${_BREADCRUMB}"
+  fi
+  echo_info "[$(tput setaf 1; tput bold) ERROR${_BREADCRUMB} $(tput sgr 0)] $@" >&2
 }
 
 function check_requirements() {
@@ -243,7 +251,7 @@ function log_failure() {
   echo "$(head -c $[PRINT_WIDTH] < /dev/zero | tr '\0' '=')" >> "${FAILURE_LOG_FILE}"
   echo "Reference File: \"${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}\"" >> "${FAILURE_LOG_FILE}"
   echo "URL:            \"${_URL}\"" >> "${FAILURE_LOG_FILE}"
-  if [ $FLAG_DEBUG -eq 1 ]; then
+  if [ $FLAG_DEBUG -ne 0 ]; then
     echo "Option used:    \"${_OPTIONS}\"" >> "${FAILURE_LOG_FILE}"
     echo "Temp Compare File: ${_TMP_OUTPUT_FILE}" >> "${FAILURE_LOG_FILE}"
   fi
@@ -304,7 +312,7 @@ function run_test() {
     ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${TMP_OUTPUT_FILE}" "${_URL}" > /dev/null
 
     local TMP_OUTPUT_FILE_EXT="$(set -- $TMP_OUTPUT_FILE.*; echo "$1")"
-    echo_debug "Comapre File: \"$TMP_OUTPUT_FILE_EXT\""
+    echo_debug "Compare File: \"$TMP_OUTPUT_FILE_EXT\""
 
     if diff --brief --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}" >/dev/null ; then
       ((COUNT_PASS++))

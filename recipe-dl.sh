@@ -155,7 +155,7 @@ function echo_info() {
 }
 
 function echo_debug() {
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     local _BREADCRUMB=$(basename ${SCRIPT_NAME})
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
@@ -166,20 +166,28 @@ function echo_debug() {
 
 function echo_warning() {
   if [[ $FLAG_SILENT -eq 0 ]]; then
-    local _BREADCRUMB=$(basename ${SCRIPT_NAME})
-    for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
-      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
-    done
-    echo_info "[$(tput setaf 3; tput bold) WARNING: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    local _BREADCRUMB=""
+    if [[ $FLAG_DEBUG -ne 0 ]]; then
+      _BREADCRUMB=$(basename ${SCRIPT_NAME})
+      for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
+        _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+      done
+      _BREADCRUMB=": ${_BREADCRUMB}"
+    fi
+    echo_info "[$(tput setaf 3; tput bold) WARNING${_BREADCRUMB} $(tput sgr 0)] $@"
   fi
 }
 
 function echo_error() {
-  local _BREADCRUMB=$(basename ${SCRIPT_NAME})
-  for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
-    _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
-  done
-  echo_info "[$(tput setaf 1; tput bold) ERROR: ${_BREADCRUMB} $(tput sgr 0)] $@" >&2
+  local _BREADCRUMB=""
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
+    _BREADCRUMB=$(basename ${SCRIPT_NAME})
+    for (( idx=${#FUNCNAME[@]}-1 ; idx>=1 ; idx-- )) ; do
+      _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
+    done
+    _BREADCRUMB=": ${_BREADCRUMB}"
+  fi
+  echo_info "[$(tput setaf 1; tput bold) ERROR${_BREADCRUMB} $(tput sgr 0)] $@" >&2
 }
 
 function rawurlencode() {
@@ -578,7 +586,7 @@ function ci2json() {
 
   cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
 
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
     echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
     echo_debug "RECIPE_JSON_FILE    =${TMP_RECIPE_JSON_FILE}"
@@ -679,7 +687,7 @@ function saveur2json() {
 
   cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
 
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
     echo_debug "SOURCE_JSON_RAW_FILE=${TMP_SOURCE_JSON_RAW_FILE}"
     echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
@@ -850,7 +858,7 @@ function epicurious2json() {
 
   cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
 
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
     echo_debug "SOURCE_JSON_RAW_FILE=${TMP_SOURCE_JSON_RAW_FILE}"
     echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
@@ -1060,7 +1068,7 @@ function generic2json() {
     echo_error "ERROR: URL (${_URL}) not supported."
   fi
 
-  if [[ $FLAG_DEBUG -eq 1 ]]; then
+  if [[ $FLAG_DEBUG -ne 0 ]]; then
     echo_debug "SOURCE_HTML_FILE    =${TMP_SOURCE_HTML_FILE}"
     echo_debug "SOURCE_JSON_RAW_FILE=${TMP_SOURCE_JSON_RAW_FILE}"
     echo_debug "SOURCE_JSON_FILE    =${TMP_SOURCE_JSON_FILE}"
