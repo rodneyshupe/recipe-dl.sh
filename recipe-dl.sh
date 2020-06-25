@@ -12,8 +12,9 @@ set -u
 #   ./recipe-dl.sh https://www.foodnetwork.com/recipes/chicken-wings-with-honey-and-soy-sauce-8662293
 #   ./recipe-dl.sh https://www.saveur.com/lamb-ribs-with-spicy-harissa-barbecue-sauce-recipe/
 
-# TODO: Add support for NewYorker.com
+# TODO: Add better recognition of unsupported sites suck as for NewYorker.com
 #       Example: ./recipe-dl.sh https://www.newyorker.com/culture/kitchen-notes/a-masters-twist-on-making-ice-cream-in-a-plastic-bag -d
+
 # Script Constant
 declare -r SCRIPT_NAME=$0
 
@@ -1060,7 +1061,7 @@ function generic2json() {
       echo "    {" >> "${TMP_RECIPE_JSON_FILE}"
       echo "      \"group\": \"\"" >> "${TMP_RECIPE_JSON_FILE}"
       echo "    , \"directions\": [" >> "${TMP_RECIPE_JSON_FILE}"
-      echo "    \"1. $(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
+      echo "    \"$(cat ${TMP_SOURCE_JSON_FILE} | sed 's/\\n/ /g'| jq --raw-output .recipeInstructions | sed 's/<[^>]*>//g' | sed 's/\"/\\\"/g' | sed 's/\&nbsp\;/\ /g' | sed 's/\ \ /\ /g' )\"" >> "${TMP_RECIPE_JSON_FILE}"
       echo "    ]}" >> "${TMP_RECIPE_JSON_FILE}"
     fi
     echo "    ]" >> "${TMP_RECIPE_JSON_FILE}"
