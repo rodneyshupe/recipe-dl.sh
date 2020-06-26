@@ -3,24 +3,46 @@ trap 'rc=$?; echo "ERR at line ${LINENO} (rc: $rc)"; exit $rc' ERR
 #trap 'rc=$?; echo "EXIT (rc: $rc)"; exit $rc' EXIT
 set -u
 
-# Script Constant
+### Script Constant
 declare -r SCRIPT_NAME=$0
 
-# Exit Constants
+### Exit Constants
 declare -r -i EX_OK=0            # successful termination
 declare -r -i EX_USAGE=64        # command line usage error
 declare -r -i EX_NOINPUT=66      # cannot open input
 declare -r -i EX_OSFILE=72       # critical OS file missing
 declare -r -i EX_IOERR=74        # input/output error
 
-# Flags
+### Forground Color Constants
+declare -A -x COLORS=(
+  ['normal']="$(tput sgr0)"
+  ['red']="$(tput setaf 1)"
+  ['green']="$(tput setaf 2)"
+  ['yellow']="$(tput setaf 3)"
+  ['blue']="$(tput setaf 4)"
+  ['magenta']="$(tput setaf 5)"
+  ['cyan']="$(tput setaf 6)"
+  ['white']="$(tput setaf 7)"
+  ['bold']="$(tput bold)"
+)
+COLORS+=( ['debug']="${COLORS['blue']}${COLORS['bold']}")
+COLORS+=( ['warning']="${COLORS['yellow']}")
+COLORS+=( ['error']="${COLORS['red']}" )
+
+COLORS+=( ['highlight']="${COLORS['cyan']}" )
+
+COLORS+=( ['pass']="${COLORS['green']}${COLORS['bold']}")
+COLORS+=( ['fail']="${COLORS['red']}${COLORS['bold']}")
+COLORS+=( ['missing']="${COLORS['yellow']}${COLORS['bold']}")
+
+### Flags
 declare -i FLAG_DEBUG=0
 declare -i FLAG_APPEND_LOG=0
 declare -i FLAG_SILENT=0
 declare -i FLAG_LOADTESTS=0
 declare -i FLAG_APPENDTESTS=0
 
-# Global Variables
+### Global Variables
 declare -a TESTS=()
 declare FAILURE_LOG_FILE=""
 
@@ -138,7 +160,7 @@ function echo_debug() {
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
     done
-    echo_info "[$(tput setaf 4; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[${COLORS['debug']} DEBUG: ${_BREADCRUMB} ${COLORS['normal']}] $@"
   fi
 }
 
@@ -152,7 +174,7 @@ function echo_warning() {
       done
       _BREADCRUMB=": ${_BREADCRUMB}"
     fi
-    echo_info "[$(tput setaf 3; tput bold) WARNING${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[${COLORS['warning']} WARNING${_BREADCRUMB} ${COLORS['normal']}] $@"
   fi
 }
 
@@ -165,7 +187,7 @@ function echo_error() {
     done
     _BREADCRUMB=": ${_BREADCRUMB}"
   fi
-  echo_info "[$(tput setaf 1; tput bold) ERROR${_BREADCRUMB} $(tput sgr 0)] $@" >&2
+  echo_info "[${COLORS['error']} ERROR${_BREADCRUMB} ${COLORS['normal']}] $@" >&2
 }
 
 function check_requirements() {
@@ -316,16 +338,16 @@ function run_test() {
 
     if diff --brief --ignore-trailing-space --ignore-blank-lines "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}" >/dev/null ; then
       ((COUNT_PASS++))
-      echo "[$(tput setaf 2; tput bold)PASS$(tput sgr 0)]"
+      echo "[${COLORS['pass']}PASS${COLORS['normal']}]"
     else
       ((COUNT_FAIL++))
-      echo "[$(tput setaf 1; tput bold)FAIL$(tput sgr 0)] see log"
+      echo "[${COLORS['fail']}FAIL${COLORS['normal']}] see log"
       log_failure "${OPTION}" "${_URL}" "${_REFERENCE_FILE}" "${TMP_OUTPUT_FILE_EXT}"
     fi
     rm "${TMP_OUTPUT_FILE_EXT}" 2>/dev/null
   else
     ((COUNT_SKIP++))
-    echo "[$(tput setaf 3; tput bold)MISSING$(tput sgr 0)]"
+    echo "[${COLORS['missing']}MISSING${COLORS['normal']}]"
     ${PROJECT_PATH}/recipe-dl.sh ${OPTION} -q -s -o "${REFERENCE_FILE_PATH}/${_REFERENCE_FILE}" "${_URL}" > /dev/null
   fi
 }

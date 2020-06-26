@@ -15,10 +15,10 @@ set -u
 # TODO: Add better recognition of unsupported sites suck as for NewYorker.com
 #       Example: ./recipe-dl.sh https://www.newyorker.com/culture/kitchen-notes/a-masters-twist-on-making-ice-cream-in-a-plastic-bag -d
 
-# Script Constant
+### Script Constant
 declare -r SCRIPT_NAME=$0
 
-# EXIT CODES
+### EXIT CODES
 declare -r -i EX_OK=0            # successful termination
 declare -r -i EX_USAGE=64        # command line usage error
 declare -r -i EX_DATAERR=65      # data format error
@@ -36,7 +36,24 @@ declare -r -i EX_CANTCREAT=73    # can't create (user) output file
 declare -r -i EX_NOPERM=77       # permission denied
 # declare -r -i EX_CONFIG=78       # configuration error
 
-# Flags
+### Forground Color Constants
+declare -A -x COLORS=(
+  ['normal']="$(tput sgr0)"
+  ['red']="$(tput setaf 1)"
+  ['green']="$(tput setaf 2)"
+  ['yellow']="$(tput setaf 3)"
+  ['blue']="$(tput setaf 4)"
+  ['magenta']="$(tput setaf 5)"
+  ['cyan']="$(tput setaf 6)"
+  ['white']="$(tput setaf 7)"
+  ['bold']="$(tput bold)"
+)
+COLORS+=( ['debug']="${COLORS['blue']}${COLORS['bold']}")
+COLORS+=( ['warning']="${COLORS['yellow']}")
+COLORS+=( ['error']="${COLORS['red']}" )
+COLORS+=( ['highlight']="${COLORS['cyan']}" )
+
+### Flags
 declare -i FLAG_SAVE_TO_FILE=0
 declare -i FLAG_DEBUG=0
 declare -i FLAG_SILENT=0
@@ -45,7 +62,7 @@ declare -i FLAG_OUTPUT_JSON=0
 declare -i FLAG_OUTPUT_MD=0
 declare -i FLAG_OUTPUT_RST=0
 
-# Arguments
+### Arguments
 declare ARG_IN_FiLE=""
 declare ARG_OUT_FiLE=""
 declare ARG_PASSED_URLS=""
@@ -163,7 +180,7 @@ function echo_debug() {
     for (( idx=${#FUNCNAME[@]}-2 ; idx>=1 ; idx-- )) ; do
       _BREADCRUMB="${_BREADCRUMB}:${FUNCNAME[idx]}"
     done
-    echo_info "[$(tput setaf 4; tput bold) DEBUG: ${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[${COLORS['debug']} DEBUG: ${_BREADCRUMB} ${COLORS['normal']}] $@"
   fi
 }
 
@@ -177,7 +194,7 @@ function echo_warning() {
       done
       _BREADCRUMB=": ${_BREADCRUMB}"
     fi
-    echo_info "[$(tput setaf 3; tput bold) WARNING${_BREADCRUMB} $(tput sgr 0)] $@"
+    echo_info "[${COLORS['warning']} WARNING${_BREADCRUMB} ${COLORS['normal']}] $@"
   fi
 }
 
@@ -190,7 +207,7 @@ function echo_error() {
     done
     _BREADCRUMB=": ${_BREADCRUMB}"
   fi
-  echo_info "[$(tput setaf 1; tput bold) ERROR${_BREADCRUMB} $(tput sgr 0)] $@" >&2
+  echo_info "[${COLORS['error']} ERROR${_BREADCRUMB} ${COLORS['normal']}] $@" >&2
 }
 
 function rawurlencode() {
