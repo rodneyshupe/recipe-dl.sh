@@ -228,7 +228,7 @@ function rawurlencode() {
   REPLY="${encoded}"   #+or echo the result (EASIER)... or both... :p
 }
 
-function rawtime2minutes() {
+function iso8601duration2minutes() {
   _TIME="${1:-}"
 
   if [[ ${_TIME} != null ]] && [[ -n "${_TIME}" ]]; then
@@ -648,7 +648,7 @@ function saveur2json() {
 
   # Parse Time
   PREP_MINUTES=0
-  COOK_MINUTES=$(( $(rawtime2minutes $(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c div.cook-time 'meta::attr(content)')) ))
+  COOK_MINUTES=$(( $(iso8601duration2minutes $(cat "${TMP_SOURCE_HTML_FILE}" | hxselect -i -c div.cook-time 'meta::attr(content)')) ))
   TOTAL_MINUTES=$(( ${PREP_MINUTES} + ${COOK_MINUTES} ))
   if [[ $PREP_MINUTES -eq 0 ]] && [[ $TOTAL_MINUTES -gt 0 ]] && [[ $COOK_MINUTES -gt 0 ]]; then
     PREP_MINUTES=$(( ${TOTAL_MINUTES} - ${COOK_MINUTES} ))
@@ -762,8 +762,8 @@ function epicurious2json() {
   echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
   # Parse Time
-  PREP_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedPrepTime)) ))
-  COOK_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedCookTime)) ))
+  PREP_MINUTES=$(( $(iso8601duration2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedPrepTime)) ))
+  COOK_MINUTES=$(( $(iso8601duration2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .formattedCookTime)) ))
   TOTAL_MINUTES=$(( ${PREP_MINUTES} + ${COOK_MINUTES} ))
   if [[ $PREP_MINUTES -eq 0 ]] && [[ $TOTAL_MINUTES -gt 0 ]] && [[ $COOK_MINUTES -gt 0 ]]; then
     PREP_MINUTES=$(( ${TOTAL_MINUTES} - ${COOK_MINUTES} ))
@@ -965,9 +965,9 @@ function generic2json() {
     echo "  \"yield\": \"${YIELD}\"," >> "${TMP_RECIPE_JSON_FILE}"
 
     # Parse Time
-    TOTAL_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .totalTime)) ))
-    COOK_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .cookTime)) ))
-    PREP_MINUTES=$(( $(rawtime2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .prepTime)) ))
+    TOTAL_MINUTES=$(( $(iso8601duration2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .totalTime)) ))
+    COOK_MINUTES=$(( $(iso8601duration2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .cookTime)) ))
+    PREP_MINUTES=$(( $(iso8601duration2minutes $(cat ${TMP_SOURCE_JSON_FILE} | jq --raw-output .prepTime)) ))
     if [[ $PREP_MINUTES -eq 0 ]] && [[ $TOTAL_MINUTES -gt 0 ]] && [[ $COOK_MINUTES -gt 0 ]]; then
       PREP_MINUTES=$(( ${TOTAL_MINUTES} - ${COOK_MINUTES} ))
     fi
