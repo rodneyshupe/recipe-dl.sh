@@ -63,8 +63,8 @@ declare -i FLAG_OUTPUT_MD=0
 declare -i FLAG_OUTPUT_RST=0
 
 ### Arguments
-declare ARG_IN_FiLE=""
-declare ARG_OUT_FiLE=""
+declare ARG_IN_FILE=""
+declare ARG_OUT_FILE=""
 declare ARG_PASSED_URLS=""
 
 function usage {
@@ -112,13 +112,13 @@ function parse_arguments () {
         ;;
       -i|--infile)
         shift
-        ARG_IN_FiLE=$1
+        ARG_IN_FILE=$1
         shift
         ;;
       -o|--outfile)
         FLAG_SAVE_TO_FILE=1
         shift
-        ARG_OUT_FiLE=$1
+        ARG_OUT_FILE=$1
         shift
         ;;
       -a|--authorize)
@@ -281,6 +281,48 @@ function minutes2time() {
 }
 
 function check_requirements() {
+  function install_macos() {
+    if command_exists brew; then
+      echo_info "Installing from Homebrew..."
+      echo_info
+
+      brew install $@ >$(tty)
+
+      return
+    elif command_exists port; then
+      echo_info "Installing from MacPorts..."
+      echo_info
+
+      port install $@ >$(tty)
+
+      return
+    fi
+
+    echo_error "Homebrew not installed."
+    echo_error "Aborting."
+  }
+
+  function install_deb() {
+    echo_info "Installing $@..."
+    echo_info
+
+    sudo_sh_c apt-get install -y $@
+  }
+
+  function install_rpm() {
+    echo_info "Installing $@..."
+    echo_info
+
+    sudo_sh_c sudo dnf install $@ #Fedora
+    sudo zypper install $@ #openSUSE
+  }
+
+  function install_aur() {
+    echo_info "Installing $@..."
+    echo_info
+    sudo pacman -S $@
+  }
+
   local MISSING=""
 
   command_exists curl || MISSING="${MISSING}$(echo '  curl')"
@@ -305,48 +347,6 @@ function check_requirements() {
 
     exit ${EX_OSFILE}
   fi
-}
-
-function install_macos() {
-  if command_exists brew; then
-    echo_info "Installing from Homebrew..."
-    echo_info
-
-    brew install $@ >$(tty)
-
-    return
-  elif command_exists port; then
-    echo_info "Installing from MacPorts..."
-    echo_info
-
-    port install $@ >$(tty)
-
-    return
-  fi
-
-  echo_error "Homebrew not installed."
-  echo_error "Aborting."
-}
-
-function install_deb() {
-  echo_info "Installing $@..."
-  echo_info
-
-  sudo_sh_c apt-get install -y $@
-}
-
-function install_rpm() {
-  echo_info "Installing $@..."
-  echo_info
-
-  sudo_sh_c sudo dnf install $@ #Fedora
-  sudo zypper install $@ #openSUSE
-}
-
-function install_aur() {
-  echo_info "Installing $@..."
-  echo_info
-  sudo pacman -S $@
 }
 
 function url2domain() {
@@ -632,8 +632,6 @@ function saveur2json() {
   local TMP_SOURCE_HTML_FILE="$(mktemp /tmp/${FUNCNAME[0]}.html.XXXXXX)"
 
   curl --compressed --silent $_URL | hxnormalize -x | tr -d '\r' | tr -d '\n' > ${TMP_SOURCE_HTML_FILE}
-
-  cat "${TMP_RECIPE_JSON_FILE}" | tr -d '\r' | jq --raw-output
 
   echo "{" > "${TMP_RECIPE_JSON_FILE}"
 
@@ -1388,10 +1386,10 @@ function recipe_output_file() {
   esac
 
   if [[ ${FLAG_SAVE_TO_FILE} -eq 1 ]]; then
-    if [[ -z "${ARG_OUT_FiLE}" ]]; then
+    if [[ -z "${ARG_OUT_FILE}" ]]; then
       SAVE_FILE="$(output_filename $(echo ${TITLE} | sed "s/[^a-zA-Z0-9]*//g") ${_EXT})"
     else
-      SAVE_FILE="$(output_filename ${ARG_OUT_FiLE} ${_EXT})"
+      SAVE_FILE="$(output_filename ${ARG_OUT_FILE} ${_EXT})"
     fi
     echo_info "   Saving to ${SAVE_FILE}"
     cat "${TEMP_OUT_FILE}" > ${SAVE_FILE}
@@ -1432,7 +1430,7 @@ function main() {
 
   check_requirements
 
-  if [[ -z "${ARG_IN_FiLE}" ]]; then
+  if [[ -z "${ARG_IN_FILE}" ]]; then
     for URL in ${ARG_PASSED_URLS}; do
       echo_info "Processsing ${URL}..."
 
@@ -1459,8 +1457,8 @@ function main() {
       recipe_output "${TEMP_RECIPE_JSON_FILE}"
     done
   else
-    echo_info "Processsing ${ARG_IN_FiLE}..."
-    recipe_output "${ARG_IN_FiLE}"
+    echo_info "Processsing ${ARG_IN_FILE}..."
+    recipe_output "${ARG_IN_FILE}"
   fi
 
   rm "${TEMP_RECIPE_JSON_FILE}" >/dev/null 2>&1
