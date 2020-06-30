@@ -32,8 +32,8 @@ Currently this has been tested for the following sites:
 ## Install
 Copy recipe-dl.sh to /opt.
 ```sh
-curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl/master/recipe-dl.sh --output /opt/recipe-dl.sh && chmod + x /opt/recipe-dl.sh
-curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl/master/rst2recipe.sh --output /opt/recipe-dl.sh && chmod + x /opt/rst2recipe.sh
+curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl.sh/master/recipe-dl.sh --output /opt/recipe-dl.sh && chmod + x /opt/recipe-dl.sh
+curl https://raw.githubusercontent.com/rodneyshupe/recipe-dl.sh/master/rst2recipe.sh --output /opt/recipe-dl.sh && chmod + x /opt/rst2recipe.sh
 ```
 
 Create symbolic links to somewhere on the path.
