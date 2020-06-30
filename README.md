@@ -1,4 +1,4 @@
-# recipe-dl
+# recipe-dl.sh
 
 Recipe download script.  Will format the recipe into JSON, Markdown,
 or reStructuredText.  I tend to use more reStructuredText so that is the
