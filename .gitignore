@@ -1,3 +1,6 @@
+#Ignore .DS_Store
+.DS_Store
+
 # Exclude all Markdown,  reStructuredText and JSON files.
 *.md
 *.rst
